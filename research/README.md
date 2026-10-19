@@ -59,7 +59,7 @@ the 432-parameter `M_{16,10}` (`example_2nd_argmax()`, a different checkpoint fr
    1.3 × 10⁻⁶ relative (3 × 10⁻¹¹ absolute). It is within 3.4% for every zoo model with `n <= 4`,
    `d >= 6` and accuracy above 98% (13% without the cut-off). For the four 5-input zoo models
    with accuracy above 98% it is off by +4% to +19%, where the law without the cut-off was off
-   by [[UNCUT]]. Next to a triple tie a well-trained model can have a large logit gap on the tie
+   by +18% to a factor of 5.6. Next to a triple tie a well-trained model can have a large logit gap on the tie
    hyperplane, and an uncut sliver then reaches far outside the chamber in which it is an
    error: for `M_{16,5}`, 0.1% of the points of the tie hyperplanes carried 68% of the uncut
    estimate. A Monte Carlo decomposition shows that the mechanism is the same at 5 inputs. For
@@ -444,7 +444,18 @@ the zoo models by Monte Carlo before the exact implementation:
 The chamber cap matches the geometry of the decomposition and was the most accurate of the
 three, so this is a choice made after seeing the 5-input results. It was then checked on the
 other training seeds (seeds 0–4), which were not used to choose it. The exact implementation
-agrees with its Monte Carlo estimate on every model tested (|z| ≤ 1.7, `test_sliver.py`).
+agrees with its Monte Carlo estimate on every model tested: |z| ≤ 1.7 for the `n <= 4` models
+in `test_sliver.py`, and |z| ≤ 2.1 for every tie hyperplane of `M_{16,5}` and `M_{32,5}`.
+(For 5-input models the Monte Carlo standard errors are optimistic, because the widths are
+heavy-tailed: two independent runs for `M_{16,5}` differ by 2σ.) That per-tie comparison
+found one flaw in the first exact implementation, now fixed. It computed each piece's
+contribution as `w · E[ζ 1_K]`, with the first moment from facet measures. On a few flat
+pieces (wedges about 10⁻⁸ thick next to the zero set of a large gap with a tiny growth rate)
+the facet measures nearly cancel, and the width functional, of norm about 10⁶, amplified their
+rounding error into spurious contributions of about 10⁻⁵: 2% of `M_{32,5}`'s tie `x_0 = x_4`
+(z = +12.5). Each piece is now triangulated and integrated by slice cubature
+(`slice.slice_linear_moment`). This changed `M_{32,5}`'s truncated law from +5.6% to +5.3%,
+and no other value at the precision shown.
 
 ## Limitations
 
