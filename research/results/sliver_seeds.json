@@ -384,5 +384,44 @@
   "first_order_se": 0.00023505569414127687,
   "truncated": 0.005860951425516514,
   "truncated_se": 4.032409037423364e-06
+ },
+ {
+  "family": "AM",
+  "d": 32,
+  "n": 5,
+  "seed": 2,
+  "error": 0.006844997406005859,
+  "error_se": 2.012960316235007e-05,
+  "method": "monte carlo",
+  "first_order": 0.00929267465839963,
+  "first_order_se": 0.00017756616562445205,
+  "truncated": 0.007342892400551754,
+  "truncated_se": 7.441583895932028e-06
+ },
+ {
+  "family": "AM",
+  "d": 32,
+  "n": 5,
+  "seed": 3,
+  "error": 0.004489541053771973,
+  "error_se": 1.6321645436467363e-05,
+  "method": "monte carlo",
+  "first_order": 0.005430346800391689,
+  "first_order_se": 0.00022043381791043013,
+  "truncated": 0.004673607269508326,
+  "truncated_se": 3.2851569583734766e-06
+ },
+ {
+  "family": "AM",
+  "d": 32,
+  "n": 5,
+  "seed": 4,
+  "error": 0.004730105400085449,
+  "error_se": 1.6751198880486342e-05,
+  "method": "monte carlo",
+  "first_order": 0.005698906372626031,
+  "first_order_se": 7.824899696497106e-05,
+  "truncated": 0.0050048719355650275,
+  "truncated_se": 4.6557407046001716e-06
  }
 ]
