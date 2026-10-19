@@ -93,3 +93,6 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+# lock files of running table builds
+research/results/*.lock
