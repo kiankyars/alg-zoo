@@ -93,31 +93,43 @@ def tie_pieces(rnn, cone, E, side_dir, fl):
     pre-activation vanishes identically on the piece the sign it has just off H in direction
     side_dir (the one-sided limit). Yields (cone, L) with L the logits map in x coordinates."""
     d, n = rnn.d, rnn.n
-    stack = [(cone, 0, np.zeros((d, n)))]
+    m = E.shape[1]
+    # stack items: (cone, t, H, (P, PE, sc) or None, S); as in engine.linear_pieces, children
+    # inherit the step-t pre-activation map and their parent's ray pre-activations, so only
+    # the new rays of a split are evaluated
+    stack = [(cone, 0, np.zeros((d, n)), None, None)]
     while stack:
-        cone, t, H = stack.pop()
+        cone, t, H, maps, S = stack.pop()
         split_done = False
-        Vx = cone.V @ E.T
         while t < n:
-            P = rnn.Wh @ H
-            P[:, t] += rnn.Wi
-            S = Vx @ P.T
-            sc = np.linalg.norm(P, axis=1) + 1e-300
+            if maps is None:
+                P = rnn.Wh @ H
+                P[:, t] += rnn.Wi
+                PE = P @ E  # the pre-activation map in zeta coordinates
+                sc = np.linalg.norm(P, axis=1) + 1e-300
+                maps = (P, PE, sc)
+                S = cone.V @ PE.T
+                fl.rnn += 2 * d * d * t + 2 * d * (t + 1) * m + d + 2 * len(S) * m * d
+            P, PE, sc = maps
             pos = S > TOL * sc
             neg = S < -TOL * sc
-            fl.rnn += 2 * d * d * t + 2 * len(Vx) * (t + 1) * d + 6 * len(Vx) * d
+            fl.rnn += 4 * len(S) * d + d
             conflict = pos.any(0) & neg.any(0)
             if conflict.any():
                 i = np.where(conflict)[0][0]
-                plus, minus = split(cone, E.T @ P[i], fl)
-                stack.append((plus, t, H))
-                stack.append((minus, t, H))
+                plus, minus, (Pi, Ni, Zi, W) = split(cone, PE[i], fl, parts=True)
+                SW = W @ PE.T
+                fl.rnn += 2 * len(W) * m * d
+                stack.append((plus, t, H, maps, np.concatenate([S[Pi], S[Zi], SW])))
+                stack.append((minus, t, H, maps, np.concatenate([S[Ni], S[Zi], SW])))
                 split_done = True
                 break
             zero = ~pos.any(0) & ~neg.any(0)
             mask = pos.any(0) | (zero & (P @ side_dir > TOL * sc))
             H = mask[:, None] * P
+            fl.rnn += 2 * d * n + d * (t + 1)
             t += 1
+            maps = S = None
         if not split_done:
             fl.rnn += 2 * len(rnn.Wo) * d * n
             yield cone, rnn.Wo @ H
@@ -127,31 +139,32 @@ def facet_measures(cone, fl):
     """(unit inward normals (k, m), (m-1)-dim Gaussian measures (k,)) of the facets of a cone in
     R^m, the latter computed in each facet's own hyperplane."""
     m = cone.V.shape[1]
-    normals, meas = [], []
     facets = [f for f in range(cone.I.shape[1]) if cone.I[:, f].sum() >= m - 1]
+    normals = cone.F[facets]
+    if m <= 2:  # facets are the origin (of 0-dim measure 1) or rays (of 1-dim measure 1/2)
+        return normals, np.full(len(facets), 1.0 if m == 1 else 0.5)
     all_sets = [frozenset(np.where(cone.I[:, f])[0].tolist()) for f in facets]
-    for f, S in zip(facets, all_sets):
-        nrm = cone.F[f]
-        if m == 1:  # a ray: its only facet is the origin, of (0-dim) measure 1
-            normals.append(nrm)
-            meas.append(1.0)
-            continue
-        if m == 2:
-            normals.append(nrm)
-            meas.append(0.5)
-            continue
-        # orthonormal basis of the facet hyperplane
-        Q = np.linalg.svd(np.eye(m) - np.outer(nrm, nrm))[0][:, : m - 1]
+    blocks, owner = [], []
+    for k, (nrm, S) in enumerate(zip(normals, all_sets)):
         if len(S) == m - 1:
             simps = [tuple(sorted(S))]
         else:
             ridges = _maximal(S & T for T in all_sets if T is not S and len(S & T) >= m - 2)
             simps = _pull(sorted(S), ridges, m - 1)
-        R = cone.V[np.array(simps)] @ Q  # (s, m-1, m-1)
-        normals.append(nrm)
-        meas.append(cone_measure(R).sum())
+        # coordinates in the facet hyperplane: a Householder reflection maps nrm to +-e_j,
+        # and the remaining m - 1 coordinates are an orthonormal basis of the hyperplane
+        j = int(np.abs(nrm).argmax())
+        w = nrm.copy()
+        w[j] += math.copysign(1.0, nrm[j])
+        w /= np.linalg.norm(w)
+        R = cone.V[np.array(simps)]
+        R = np.delete(R - 2 * (R @ w)[..., None] * w, j, axis=-1)  # (s, m-1, m-1)
+        blocks.append(R)
+        owner += [k] * len(simps)
         fl.measure += len(simps) * (60 + 4 * m**3)
-    return np.array(normals).reshape(-1, m), np.array(meas)
+    meas = np.zeros(len(facets))
+    np.add.at(meas, owner, cone_measure(np.concatenate(blocks)))
+    return normals, meas
 
 
 def first_moment(cone, fl):
@@ -163,6 +176,11 @@ def first_moment(cone, fl):
 def min_moment(K, widths, fl):
     """E[min_i (w_i . zeta) 1_K(zeta)] for linear functionals w_i: K is split into the cones on
     which each w_i is the smallest (ties go to the first), each contributing w_i . E[zeta 1]."""
+    W = np.stack(widths)
+    vals = K.V @ W.T  # (rays, functionals); a linear inequality holds on K iff it holds at the rays
+    fl.split += 2 * W.size * len(K.V)
+    if (vals[:, :1] <= vals[:, 1:]).all():  # the usual case: the first is the smallest on all of K
+        return float(widths[0] @ first_moment(K, fl))
     out = 0.0
     for i, w in enumerate(widths):
         Ki = K

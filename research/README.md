@@ -49,22 +49,33 @@ the 432-parameter `M_{16,10}` (`example_2nd_argmax()`, a different checkpoint fr
    cone: with 6.7 × 10⁷ fresh samples, the χ² tests over their 240 root cones give p =
    0.07–0.92. Matching even 10⁻⁹ precision by sampling would take 10¹³–10¹⁷ samples, depending
    on the model's accuracy.
-3. **A mechanistic explanation of the residual error: the tie-sliver law.** The errors of
-   well-trained models are thin wedges along tie hyperplanes. A first-order formula built from
-   the logit gap on the tie hyperplane reproduces their error rate. For all eight `n = 2`
-   models, where it reduces to ARC's `M_{2,2}` explanation, it matches the exact error to within
-   1.3 × 10⁻⁶ relative (3 × 10⁻¹¹ absolute). It is within 13% for every tested model with
-   `n <= 4`, `d >= 6` and accuracy above 98%. For smaller or weaker models with `n <= 4`, whose
-   errors are not dominated by slivers, it is off by −76% to +96% (up to a factor of about 4).
-   It does not carry over to 5 inputs: it overestimates the error of every 5-input model tested
-   so far by 1.6 to 5.6 times, including `M_{16,5}` (accuracy 99.25%, 2.8 times). `M_{32,5}` and
-   `AM_{32,5}` are still to be checked.
+3. **A mechanistic explanation of the residual error, now including 5-input models: the
+   order-truncated tie-sliver law.** The errors of well-trained models are thin wedges
+   ("slivers") along the tie hyperplanes at which the target switches between two inputs. A
+   first-order formula built from the logit gap on the tie hyperplane reproduces their error
+   rate, once each sliver is cut off where it leaves its **order chamber** (the cone on which
+   the ordering of the inputs, and so the target, is fixed). For all eight `n = 2` models,
+   where it reduces to ARC's `M_{2,2}` explanation, it matches the exact error to within
+   1.3 × 10⁻⁶ relative (3 × 10⁻¹¹ absolute). It is within 3.4% for every model with `n <= 4`,
+   `d >= 6` and accuracy above 98% (13% without the cut-off). For the four 5-input models with
+   accuracy above 98% it is off by [[N5]], where the law without the cut-off was off by
+   [[UNCUT]]. Next to a triple tie a well-trained model can have a large logit gap on the tie
+   hyperplane, and an uncut sliver then reaches far outside the chamber in which it is an
+   error: for `M_{16,5}`, 0.1% of the points of the tie hyperplanes carried 68% of the uncut
+   estimate. A Monte Carlo decomposition shows that the mechanism is the same at 5 inputs. For
+   those four models, [[ONE]] of the wrong inputs lie in exactly one sliver, [[TWO]] in two
+   overlapping slivers (next to a triple tie) and at most [[NONE]] in none. What the law
+   leaves out is second order in the sliver width: overlapping slivers are counted twice, and
+   the logit gap bends inside a sliver. It is larger for the `d = 16` models, whose errors are
+   3–4 times larger than at `d = 32`. [[SEEDS]] The law costs about 0.4% of the exact
+   computation for 5-input models (3 × 10⁶ forward passes for `M_{16,5}`).
 
 What is **not** solved: ARC's headline challenge `M_{16,10}`; matching sampling at intermediate
-budgets for 4- and 5-input models, where exact computation costs 10⁵–10⁹ forward passes;
-among the 3-input models, the others (`M_{3,3}`, `M_{4,3}`, `M_{6,3}`, `M_{8,3}`) and the
-heaviest noise level for `M_{5,3}` and `M_{16,3}`; and a mechanistic explanation of the errors
-of 5-input models, which the tie-sliver law does not give. See [Limitations](#limitations).
+budgets for 4- and 5-input models, where exact computation costs 10⁵–10⁹ forward passes (the
+sliver law does not help there: it describes trained models, and on noisy models it is off by
+8–50%); among the 3-input models, the others (`M_{3,3}`, `M_{4,3}`, `M_{6,3}`, `M_{8,3}`) and
+the heaviest noise level for `M_{5,3}` and `M_{16,3}`; and an exact second-order sliver law
+(overlaps at triple ties, bending of the gap). See [Limitations](#limitations).
 
 ### 1. MSE versus compute (3-input models, held-out noisy-weights test)
 
@@ -170,9 +181,21 @@ Monte Carlo checks of the four largest models.
 
 ### 3. The tie-sliver law
 
-First-order tie-sliver estimate of the error rate (`sliver.py`) against the exact error rate of
-the trained models. The 5-input rows show where the law breaks down; `M_{32,5}` and `AM_{32,5}`
-are still to run (`./run_tables.sh` resumes them):
+Tie-sliver estimates of the error rate (`sliver.py`) against the exact error rate of the trained
+models: the first-order law, and the order-truncated law, whose slivers are cut off at the
+boundary of their order chamber (see [Method](#method)). Both are computed exactly from the
+cone geometry, and both agree with independent Monte Carlo estimates of the same formulas
+(`test_sliver.py`, `sliver_mc.py law`; |z| ≤ 1.7). The last column is a Monte Carlo decomposition
+of the wrong inputs (`sliver_mc.py table`, 2²² samples). A wrong input lies in the sliver of
+one of its target's walls (the tie hyperplanes bounding its order chamber where the target
+changes) if the model is wrong all along the segment from the input to its foot on that wall.
+The sum over walls of the true slivers is therefore `one + 2 × two`. The law differs from that
+sum only through the bending of the logit gap inside the sliver, so
+`law − exact = bending + two − none` (as fractions of the error). The last column is that
+bending. For `M_{4,3}` and `M_{5,3}` the wrong inputs are still in slivers, but the slivers
+are not thin, and the gap bends so much inside them that the first-order law fails. For
+`M_{3,3}` and the weak 5-input models, [[WEAK]] of the wrong inputs are where two slivers
+overlap.
 
 <!-- SLIVER_TABLE -->
 | model | exact error | tie-sliver law | relative difference |
@@ -202,6 +225,17 @@ are still to run (`./run_tables.sh` resumes them):
 | `AM_{8,5}` | 3.0145e-01 | 4.9695e-01 | +64.85% |
 | `AM_{16,5}` | 1.6896e-02 | 9.4125e-02 | +457.07% |
 <!-- /SLIVER_TABLE -->
+
+**Other training seeds.** The zoo keeps the best of 5 training seeds. On all five seeds of the
+larger 4- and 5-input models (`sliver_seeds.py`), the order-truncated law is closer to the
+error than the first-order law [[SEEDCLOSER]]. Most wrong inputs lie in tie slivers on every
+seed. The law's accuracy tracks the model's: [[SEEDRANGE]]. For 4-input models the error and
+the laws are exact. For 5-input models all three are Monte Carlo estimates (2²⁴ samples for the
+error; 2²⁰ points per tie hyperplane for the laws; the `how` column gives the error's relative
+standard error).
+
+<!-- SEEDS_TABLE -->
+<!-- /SEEDS_TABLE -->
 
 ## Method
 
@@ -264,6 +298,27 @@ expectation reduces to measures of `(n − 2)`-dimensional facets (closed form f
 `n = 2` this is exactly ARC's `M_{2,2}` explanation. There, the "yellow" linear pieces, where
 `a_0 ≈ a_1`, contain the tie line `x_0 = x_1`, and the error is the thin wedge between the
 decision boundary and that line.
+
+**The order cap.** A sliver is an error only inside its **order chamber**, the cone on which the
+ordering of the inputs is fixed. Within a chamber the target is fixed, and the model's errors
+are slivers on the target's two walls (the ties with the inputs ranked just above and just
+below it). Moving a distance `τ` off the tie hyperplane `x_p = x_q`, one tied value rises and
+the other falls by `τ/√2`. So the normal line leaves the chamber at
+`ℓ(ζ) = min(√2 x_above − ζ_0, ζ_0 − √2 x_below)`, where `x_above` and `x_below` are the inputs
+ranked just above and below the tie and `ζ_0 = √2 x_p`. On each root cone of the tie hyperplane
+these neighbours are fixed, so `ℓ` is a minimum of linear functions of `ζ`. The
+**order-truncated law** caps the width at the chamber boundary:
+
+    error ≈ Σ_ties Σ_sides Σ_K φ(0) E[min(−Δ_K·ζ/g_K, ℓ(ζ)) ; ζ ∈ K, Δ_K·ζ < 0].
+
+Splitting `K` into the cones on which each term of the minimum is the smallest reduces this to
+the same facet measures. For a well-trained model the cap is usually inactive, because the
+slivers are far thinner than the chamber. Next to a triple tie, however, a model can have a
+large gap on the tie hyperplane: for `M_{16,5}`, uncapped widths reach 30 where the true width is
+0.003. Those points dominate the uncapped law for 5-input models. The cap costs a few more cone
+splits. What it leaves out is second order in the sliver width: slivers on a target's two
+walls that overlap near a triple tie are counted twice, and the logit gap can bend inside a
+sliver when a neuron switches.
 
 **The anytime estimator (compute knob).** Exact refinement costs about 10³ forward-pass
 equivalents for 3-input models. For smaller budgets there is a fixed ladder of cheaper rungs:
@@ -364,6 +419,26 @@ problems. Its corrections are reflected here: multiplicity, the history of the r
 `n <= 3` precision, and wording. Everything above comes from the corrected accounting, the
 frozen rule and the fresh test set.
 
+**The order cap of the sliver law.** The 5-input failure of the first-order law was first
+checked to be real: an independent Monte Carlo estimate of the same formula reproduces it
+(2.07 × 10⁻² against 2.11 × 10⁻² for `M_{16,5}`). Monte Carlo then showed that the errors
+are slivers between adjacent ranks: over 99% of the wrong predictions of the four accurate
+5-input models are the input ranked just above or just below the target, and the median gap
+between the two values is 0.001–0.007. The uncut estimate is dominated by points where the true
+sliver width is a thousandth of the first-order width or less. The cap has no free parameter. Three variants were compared on
+the zoo models by Monte Carlo before the exact implementation:
+
+* capping where the normal line leaves the order chamber (the law reported here);
+* capping only where the target itself changes, which differs at second order (+20% instead
+  of +18% for `M_{16,5}`);
+* also capping where another class overtakes the competitor, so that overlapping slivers are
+  counted once, which undercounts (−14% for `M_{16,5}`, −28% for `AM_{32,5}`).
+
+The chamber cap matches the geometry of the decomposition and was the most accurate of the
+three, so this is a choice made after seeing the 5-input results. It was then checked on the
+other training seeds (seeds 0–4), which were not used to choose it. The exact implementation
+agrees with its Monte Carlo estimate on every model tested (|z| ≤ 1.7, `test_sliver.py`).
+
 ## Limitations
 
 * **`M_{16,10}` is still open.** The exact engine refines every linear region, and their number
@@ -385,6 +460,13 @@ frozen rule and the fresh test set.
   For `M_{3,3}` and `M_{4,3}` the errors are not sliver-dominated. For `M_{6,3}` and `M_{8,3}`
   we do not yet know why the mid-range rungs fail. ARC's own estimates for `M_{4,3}` "roughly
   match the computational efficiency of sampling"; ours do not at intermediate budgets.
+* **The sliver law explains trained models, not noisy ones.** It describes the errors of the
+  zoo models as trained. Under the weight noise of the evaluation protocol the 4-input errors
+  grow 6–40 times (`M_{16,4}`: from 0.17% to 1–7% at σ = 0.002–0.01), and on 9 such noisy
+  models the order-truncated law is off by +8% to +50%. So it is not an estimator that competes
+  with sampling under that protocol. Its remaining error on trained models is second order and
+  is measured above by Monte Carlo, not computed. An exact second-order law (overlapping slivers
+  at triple ties, bending of the gap) is still to be written.
 * **The estimator rule was chosen on a development set.** The finishing rule was chosen among
   three candidates on development seeds 32–95, then frozen; all reported numbers come from
   fresh seeds 1000–1199. The noise model, its scale and the number of models are our own
@@ -400,7 +482,9 @@ frozen rule and the fresh test set.
 pip install -e .            # from the repo root; plus numpy, scipy, matplotlib
 cd research
 python test_engine.py M2,2 M4,3 M8,4          # exact engine vs Monte Carlo
-./run_tables.sh                                 # exact accuracies (n <= 5), tie-sliver law, per-root MC
+python test_sliver.py M:8,3 M:16,4               # sliver laws vs their Monte Carlo estimates
+./run_tables.sh                                 # exact accuracies (n <= 5), tie-sliver laws, per-root MC
+python sliver_mc.py table                        # where the wrong inputs lie (one / two / no slivers)
 ./run_dev.sh                                     # development set used to choose the finishing rule
 ./run_test.sh                                    # held-out test: 7 models x 3 noise levels x 200 models
 python summarize.py results/test/*.jsonl         # worst-case ratios with bootstrap intervals
@@ -413,6 +497,7 @@ All runs are resumable (results are appended per model, and per root cone in
 `results/roots/`). Files: `engine.py` (cones, refinement, exact estimator, anytime estimator
 and ladder), `exact_parallel.py` (the exact estimator over root cones in a process pool),
 `orthant.py` (orthant probabilities), `slice.py` (slice cubature), `sliver.py` (tie-sliver
-law), `evaluate.py` (noisy-ensemble protocol), `summarize.py`, `plot.py`, `make_tables.py`,
+laws), `sliver_mc.py` (Monte Carlo checks of the sliver laws and the decomposition of the wrong
+inputs), `evaluate.py` (noisy-ensemble protocol), `summarize.py`, `plot.py`, `make_tables.py`,
 `exact_table.py`, `sliver_table.py`, `mc_validate.py`, `mc_roots.py` (per-root Monte Carlo
 check), `test_engine.py`, `test_sliver.py`.

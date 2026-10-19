@@ -78,14 +78,34 @@ def sliver_table():
     if os.path.exists("results/sliver_decomposition.json"):
         decomp = {(r["family"], r["d"], r["n"]): r for r in json.load(open("results/sliver_decomposition.json"))}
     out = ["| model | exact error | first-order law | relative difference | order-truncated law | "
-           "relative difference | wrong inputs in one / two / no slivers (Monte Carlo) |",
-           "|---|---|---|---|---|---|---|"]
+           "relative difference | wrong inputs in one / two / no slivers | gap bending |",
+           "|---|---|---|---|---|---|---|---|"]
     for r in rows:
         name = ("M" if r["family"] == "M" else "AM") + f"_{{{r['d']},{r['n']}}}"
         dc = decomp.get((r["family"], r["d"], r["n"]))
-        shares = "-" if dc is None else " / ".join(f"{dc[k] / dc['error']:.1%}" for k in ("one", "two", "none"))
+        shares = bend = "-"
+        if dc is not None:
+            shares = " / ".join(f"{dc[k] / dc['error']:.1%}" for k in ("one", "two", "none"))
+            # truncated law - exact = (law - sum of true slivers) + overlaps - errors in no sliver
+            bend = f"{r['truncated_rel_diff'] - (dc['two'] - dc['none']) / dc['error']:+.1%}"
         out.append(f"| `{name}` | {r['exact_error']:.4e} | {r['sliver_error']:.4e} | {_rel(r['sliver_rel_diff'])} | "
-                   f"{r['truncated_error']:.4e} | {_rel(r['truncated_rel_diff'])} | {shares} |")
+                   f"{r['truncated_error']:.4e} | {_rel(r['truncated_rel_diff'])} | {shares} | {bend} |")
+    return "\n".join(out)
+
+
+def seeds_table():
+    if not os.path.exists("results/sliver_seeds.json"):
+        return "(pending)"
+    rows = json.load(open("results/sliver_seeds.json"))
+    out = ["| model | seed | error | how | first-order law | order-truncated law | "
+           "wrong inputs in one / two / no slivers |", "|---|---|---|---|---|---|---|"]
+    for r in sorted(rows, key=lambda r: (r["n"], r["family"] != "M", r["d"], r["seed"])):
+        name = ("M" if r["family"] == "M" else "AM") + f"_{{{r['d']},{r['n']}}}"
+        shares = " / ".join(f"{r[k]:.1%}" for k in ("one", "two", "none")) if "two" in r else "-"
+        how = "exact" if r["method"] == "exact" else f"MC ±{r['error_se'] / r['error']:.1%}"
+        out.append(f"| `{name}` | {r['seed']} | {r['error']:.3e} | {how} | "
+                   f"{_rel((r['first_order'] - r['error']) / r['error'])} | "
+                   f"{_rel((r['truncated'] - r['error']) / r['error'])} | {shares} |")
     return "\n".join(out)
 
 
@@ -95,7 +115,7 @@ def fill_readme(path="README.md"):
 
     text = open(path).read()
     for key, fn in [("SWEEP_TABLE", sweep_table), ("DEV_TABLE", dev_table), ("EXACT_TABLE", exact_table),
-                    ("SLIVER_TABLE", sliver_table)]:
+                    ("SLIVER_TABLE", sliver_table), ("SEEDS_TABLE", seeds_table)]:
         text = re.sub(rf"<!-- {key} -->.*?<!-- /{key} -->", lambda _: f"<!-- {key} -->\n{fn()}\n<!-- /{key} -->",
                       text, flags=re.S)
     open(path, "w").write(text)
@@ -107,4 +127,5 @@ if __name__ == "__main__":
     if "--readme" in sys.argv:
         fill_readme()
     else:
-        print("## sweep\n\n" + sweep_table() + "\n\n## exact\n\n" + exact_table() + "\n\n## sliver\n\n" + sliver_table())
+        print("## sweep\n\n" + sweep_table() + "\n\n## exact\n\n" + exact_table() + "\n\n## sliver\n\n" + sliver_table()
+              + "\n\n## seeds\n\n" + seeds_table())

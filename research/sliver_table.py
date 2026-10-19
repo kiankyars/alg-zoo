@@ -67,7 +67,7 @@ if __name__ == "__main__":
             done[(tuple(r["spec"]), r["law"], tuple(r["pair"]))] = r
     todo = [(s, law, pair) for s in SPECS for law in LAWS for pair in itertools.combinations(range(s[2]), 2)
             if (s, law, pair) not in done]
-    todo.sort(key=lambda j: -j[0][1] * 10**j[0][2])  # largest models first
+    todo.sort(key=lambda j: (j[0][2], j[0][1], j[1] != "truncated"))  # smallest models first
     with Pool(WORKERS) as pool, open(jobs_path, "a") as fh:
         for r in pool.imap_unordered(job, todo):
             fh.write(json.dumps(r) + "\n")
