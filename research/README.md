@@ -56,18 +56,21 @@ the 432-parameter `M_{16,10}` (`example_2nd_argmax()`, a different checkpoint fr
    rate, once each sliver is cut off where it leaves its **order chamber** (the cone on which
    the ordering of the inputs, and so the target, is fixed). For all eight `n = 2` models,
    where it reduces to ARC's `M_{2,2}` explanation, it matches the exact error to within
-   1.3 × 10⁻⁶ relative (3 × 10⁻¹¹ absolute). It is within 3.4% for every model with `n <= 4`,
-   `d >= 6` and accuracy above 98% (13% without the cut-off). For the four 5-input models with
-   accuracy above 98% it is off by [[N5]], where the law without the cut-off was off by
-   [[UNCUT]]. Next to a triple tie a well-trained model can have a large logit gap on the tie
+   1.3 × 10⁻⁶ relative (3 × 10⁻¹¹ absolute). It is within 3.4% for every zoo model with `n <= 4`,
+   `d >= 6` and accuracy above 98% (13% without the cut-off). For the four 5-input zoo models
+   with accuracy above 98% it is off by +4% to +19%, where the law without the cut-off was off
+   by [[UNCUT]]. Next to a triple tie a well-trained model can have a large logit gap on the tie
    hyperplane, and an uncut sliver then reaches far outside the chamber in which it is an
    error: for `M_{16,5}`, 0.1% of the points of the tie hyperplanes carried 68% of the uncut
    estimate. A Monte Carlo decomposition shows that the mechanism is the same at 5 inputs. For
-   those four models, [[ONE]] of the wrong inputs lie in exactly one sliver, [[TWO]] in two
-   overlapping slivers (next to a triple tie) and at most [[NONE]] in none. What the law
+   those four models, 90–97% of the wrong inputs lie in exactly one sliver, 3–10% in two
+   overlapping slivers (next to a triple tie) and at most 0.4% in none. What the law
    leaves out is second order in the sliver width: overlapping slivers are counted twice, and
    the logit gap bends inside a sliver. It is larger for the `d = 16` models, whose errors are
-   3–4 times larger than at `d = 32`. [[SEEDS]] The law costs about 0.4% of the exact
+   3–4 times larger than at `d = 32`. On all five training seeds of the larger 4- and 5-input models (35 models), the cap brings
+   the law closer to the error every time, and at least 98% of the wrong inputs lie in one or
+   two slivers. The law is less tight on some seeds, though: up to +25% for `M_{16,5}`, and +40% to +49%
+   for the two least accurate seeds of `M_{8,4}` (97.2–97.6% accurate). The law costs about 0.4% of the exact
    computation for 5-input models (3 × 10⁶ forward passes for `M_{16,5}`).
 
 What is **not** solved: ARC's headline challenge `M_{16,10}`; matching sampling at intermediate
@@ -228,8 +231,12 @@ overlap.
 
 **Other training seeds.** The zoo keeps the best of 5 training seeds. On all five seeds of the
 larger 4- and 5-input models (`sliver_seeds.py`), the order-truncated law is closer to the
-error than the first-order law [[SEEDCLOSER]]. Most wrong inputs lie in tie slivers on every
-seed. The law's accuracy tracks the model's: [[SEEDRANGE]]. For 4-input models the error and
+error than the first-order law on all 35 models. Most wrong inputs lie in tie slivers on every
+seed. On every seed at least 98.4% of the
+wrong inputs lie in one or two slivers. The law's accuracy tracks the model's. It is within
+1.6% on every seed of `M_{32,4}`, and within 9% on every seed of `M_{16,4}`, `M_{32,5}` and
+`AM_{32,5}`. It is off by up to +17% for `AM_{16,5}`, +25% for `M_{16,5}`, and +40% to +49% for
+the two least accurate seeds of `M_{8,4}` (accuracy 97.2–97.6%). For 4-input models the error and
 the laws are exact. For 5-input models all three are Monte Carlo estimates (2²⁴ samples for the
 error; 2²⁰ points per tie hyperplane for the laws; the `how` column gives the error's relative
 standard error).
