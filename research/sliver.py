@@ -26,8 +26,9 @@ import math
 
 import numpy as np
 
-from engine import TOL, Cone, Flops, _maximal, _pull, split, target_rank
+from engine import TOL, Cone, Flops, _maximal, _pull, split, target_rank, triangulate
 from orthant import cone_measure
+from slice import slice_flops, slice_linear_moment
 
 PHI0 = 1.0 / math.sqrt(2 * math.pi)
 
@@ -173,14 +174,33 @@ def first_moment(cone, fl):
     return PHI0 * (N * g[:, None]).sum(0)
 
 
+def linear_moment(cone, w, fl):
+    """E[(w . zeta) 1_K(zeta)] for zeta ~ N(0, I_m) and a linear functional w (nonnegative on K).
+
+    This equals w . E[zeta 1_K] (first_moment), but that is ill-conditioned on flat pieces: when
+    the logit gap Delta is large and its growth rate g tiny, a piece next to the zero set of
+    Delta can be a wedge of thickness ~1e-8, whose first moment comes from nearly cancelling
+    facet measures, and the width -Delta / g multiplies that rounding error by up to 1e8 (it
+    produced spurious contributions of ~5e-6 in M_{32,5}). So K is triangulated and integrated
+    by slice cubature (slice.slice_linear_moment), which stays accurate on flat cones."""
+    m = cone.V.shape[1]
+    if m == 1:
+        return float(w @ first_moment(cone, fl))
+    vals, pieces = slice_linear_moment(triangulate(cone), w, return_pieces=True)
+    fl.split += 5 * len(cone.V) * m
+    fl.measure += slice_flops(m, 3) * pieces
+    return float(vals.sum())
+
+
 def min_moment(K, widths, fl):
-    """E[min_i (w_i . zeta) 1_K(zeta)] for linear functionals w_i: K is split into the cones on
-    which each w_i is the smallest (ties go to the first), each contributing w_i . E[zeta 1]."""
+    """E[min_i (w_i . zeta) 1_K(zeta)] for linear functionals w_i that are nonnegative on K: K is
+    split into the cones on which each w_i is the smallest (ties go to the first), each
+    contributing E[(w_i . zeta) 1] (linear_moment)."""
     W = np.stack(widths)
     vals = K.V @ W.T  # (rays, functionals); a linear inequality holds on K iff it holds at the rays
     fl.split += 2 * W.size * len(K.V)
     if (vals[:, :1] <= vals[:, 1:]).all():  # the usual case: the first is the smallest on all of K
-        return float(widths[0] @ first_moment(K, fl))
+        return linear_moment(K, widths[0], fl)
     out = 0.0
     for i, w in enumerate(widths):
         Ki = K
@@ -193,7 +213,7 @@ def min_moment(K, widths, fl):
                 continue
             Ki, _ = split(Ki, v - w, fl)  # where w_i <= w_j
         if Ki is not None:
-            out += float(w @ first_moment(Ki, fl))
+            out += linear_moment(Ki, w, fl)
     return out
 
 
@@ -243,6 +263,6 @@ def sliver_error(rnn, task, return_details=False, order_cap=True, pairs=None):
                     if order_cap and lim:
                         err += PHI0 * min_moment(K, [-delta / g] + lim, fl)
                     else:
-                        err += PHI0 / g * float(-delta @ first_moment(K, fl))
+                        err += PHI0 * linear_moment(K, -delta / g, fl)
     details = dict(flagged=flagged)
     return (err, fl, details) if return_details else (err, fl)

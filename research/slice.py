@@ -52,6 +52,60 @@ def sphere_area(n):
     return 2 * math.pi ** (n / 2) / math.gamma(n / 2)
 
 
+def _narrow_pieces(R, max_angle):
+    """Bisects simplicial cones R (B, n, n) along their longest edge until all their rays are
+    within max_angle radians. Returns [(rays (b, n, n), index of the original cone (b,))]."""
+    R = np.asarray(R, dtype=np.float64)
+    R = R / np.linalg.norm(R, axis=-1, keepdims=True)
+    B, n, _ = R.shape
+    work = [(R, np.arange(B))]
+    leaves = []
+    while work:
+        Rs, idx = work.pop()
+        G = Rs @ np.swapaxes(Rs, -1, -2)
+        flat = np.arccos(np.clip(G, -1, 1)).reshape(len(Rs), -1)
+        wide = flat.max(1) > max_angle
+        if (~wide).any():
+            leaves.append((Rs[~wide], idx[~wide]))
+        if wide.any():
+            Rw, iw = Rs[wide], idx[wide]
+            e = flat[wide].argmax(1)
+            a, b = e // n, e % n
+            mid = Rw[np.arange(len(Rw)), a] + Rw[np.arange(len(Rw)), b]
+            mid /= np.linalg.norm(mid, axis=1, keepdims=True)
+            R1, R2 = Rw.copy(), Rw.copy()
+            R1[np.arange(len(Rw)), a] = mid
+            R2[np.arange(len(Rw)), b] = mid
+            work.append((np.concatenate([R1, R2]), np.concatenate([iw, iw])))
+    return leaves
+
+
+def slice_linear_moment(R, w, s=3, max_angle=0.3, return_pieces=False):
+    """E[(w . x) 1_K(x)] for x ~ N(0, I_n) and simplicial cones K with rays R (B, n, n). In polar
+    coordinates it is C_n * int_{K on the sphere} (w . u) du with
+    C_n = (2 pi)^(-n/2) 2^((n-1)/2) Gamma((n+1)/2), and on the slice {y : u0 . y = 1}
+    du = |y|^-n dA, so it is C_n int_slice (w . y) |y|^-(n+1) dA: a smooth integrand on a flat
+    simplex, integrated by GM cubature of degree 2s+1 after bisecting wide cones. Unlike the
+    integration-by-parts formula (a signed sum of facet measures), it stays accurate on flat
+    cones, whose facet measures nearly cancel."""
+    B, n, _ = np.shape(R)
+    out = np.zeros(B)
+    leaves = _narrow_pieces(R, max_angle)
+    P, W = gm_rule(n - 1, s)
+    C = (2 * math.pi) ** (-n / 2) * 2 ** ((n - 1) / 2) * math.gamma((n + 1) / 2)
+    for Rs, idx in leaves:
+        u = Rs.sum(1)
+        u /= np.linalg.norm(u, axis=1, keepdims=True)
+        Y = Rs / (Rs @ u[:, :, None])  # slice vertices (b, n, n)
+        pts = np.einsum("pj,bjk->bpk", P, Y)  # (b, P, n)
+        f = (pts @ w) * (pts**2).sum(-1) ** (-(n + 1) / 2)
+        vals = C * np.abs(np.linalg.det(Y)) / math.factorial(n - 1) * (f @ W)
+        np.add.at(out, idx, vals)
+    if return_pieces:
+        return out, sum(len(i) for _, i in leaves)
+    return out
+
+
 def slice_measure(R, s=2, max_angle=0.5, return_pieces=False):
     """Gaussian measure of simplicial cones with rays R (B, n, n), by GM cubature of degree
     2s+1 on the slice. Cones whose rays span an angle > max_angle (radians) are bisected
