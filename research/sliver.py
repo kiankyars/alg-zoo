@@ -33,10 +33,18 @@ PHI0 = 1.0 / math.sqrt(2 * math.pi)
 
 
 def tie_frames(n, task):
-    """Yields (p, q, E, nu, roots, targets): E (n, n-1) orthonormal basis of H_pq whose first
-    column is (e_p + e_q)/sqrt 2, nu = (e_p - e_q)/sqrt 2, roots = simplicial cones (rays in
-    zeta coordinates) covering the part of H_pq where the tie is between the target rank and an
-    adjacent rank, and targets = {side: (target, competitor)} for side in (+1, -1)."""
+    """Yields (p, q, E, nu, roots, limits, targets): E (n, n-1) orthonormal basis of H_pq whose
+    first column is (e_p + e_q)/sqrt 2, nu = (e_p - e_q)/sqrt 2, roots = simplicial cones (rays
+    in zeta coordinates) covering the part of H_pq where the tie is between the target rank and
+    an adjacent rank, limits[i] = the order limits of roots[i] (see below), and
+    targets = {side: (target, competitor)} for side in (+1, -1).
+
+    Order limits. Moving a distance tau off H_pq along +-nu, one tied value rises and the other
+    falls by tau / sqrt 2, so the line leaves the order chamber of the tie face (the ordering
+    changes) once the riser passes the object just above the tie, at
+    tau = sqrt 2 x_above - zeta_0, or the faller passes the one just below, at
+    tau = zeta_0 - sqrt 2 x_below. Within a root the ordering is fixed, so both are linear
+    functionals of zeta (nonnegative on the root); limits holds those that exist."""
     r = target_rank(task, n)
     m = n - 1
     for p, q in itertools.combinations(range(n), 2):
@@ -55,11 +63,16 @@ def tie_frames(n, task):
         if r + 1 <= n - 1:
             types.append((r, {+1: (p, q), -1: (q, p)}))
         for obj_rank, targets in types:
-            roots = []
+            roots, limits = [], []
             for perm in itertools.permutations(range(m)):
                 # perm[i] = object at sorted rank i; object 0 is the tie, object j>0 = others[j-1]
                 if perm[obj_rank] != 0:
                     continue
+                lim = []
+                if obj_rank >= 1:  # sqrt 2 zeta_above - zeta_0
+                    lim.append(math.sqrt(2) * np.eye(m)[perm[obj_rank - 1]] - np.eye(m)[0])
+                if obj_rank + 1 <= m - 1:  # zeta_0 - sqrt 2 zeta_below
+                    lim.append(np.eye(m)[0] - math.sqrt(2) * np.eye(m)[perm[obj_rank + 1]])
                 for k in range(m + 1):
                     Y = np.zeros((m, m))  # rows: rays in sorted object coordinates
                     for j in range(1, k + 1):
@@ -71,7 +84,8 @@ def tie_frames(n, task):
                     Z[:, 0] *= math.sqrt(2)  # zeta_0 = sqrt(2) * tied value
                     Z /= np.linalg.norm(Z, axis=1, keepdims=True)
                     roots.append(Z)
-            yield p, q, E, nu, roots, targets
+                    limits.append(lim)
+            yield p, q, E, nu, roots, limits, targets
 
 
 def tie_pieces(rnn, cone, E, side_dir, fl):
@@ -146,15 +160,48 @@ def first_moment(cone, fl):
     return PHI0 * (N * g[:, None]).sum(0)
 
 
-def sliver_error(rnn, task, return_details=False):
-    """First-order tie-sliver estimate of the error rate (1 - accuracy). Returns (error, Flops,
-    details) with details = dict(flagged H-measure where the first-order picture fails)."""
+def min_moment(K, widths, fl):
+    """E[min_i (w_i . zeta) 1_K(zeta)] for linear functionals w_i: K is split into the cones on
+    which each w_i is the smallest (ties go to the first), each contributing w_i . E[zeta 1]."""
+    out = 0.0
+    for i, w in enumerate(widths):
+        Ki = K
+        for j, v in enumerate(widths):
+            if j == i or Ki is None:
+                continue
+            if np.abs(v - w).max() <= 1e-12 * np.abs(w).max():
+                if j < i:
+                    Ki = None
+                continue
+            Ki, _ = split(Ki, v - w, fl)  # where w_i <= w_j
+        if Ki is not None:
+            out += float(w @ first_moment(Ki, fl))
+    return out
+
+
+def sliver_error(rnn, task, return_details=False, order_cap=True, pairs=None):
+    """Tie-sliver estimate of the error rate (1 - accuracy). Returns (error, Flops, details) with
+    details = dict(flagged H-measure where the first-order picture fails). With `pairs` (a set
+    of (p, q), p < q) only those tie hyperplanes are included (the sum over all pairs is the
+    estimate; sliver_table.py uses this to spread one model over several processes).
+
+    order_cap=False is the first-order law: width -Delta / g everywhere on the wrong part of
+    H_pq. order_cap=True (the order-truncated law) caps the width at the order limits of the
+    root (see tie_frames), i.e. where the normal line leaves the order chamber. Within a chamber
+    the target is fixed and the model's errors are slivers on the target's two walls, so each
+    sliver is measured inside its chamber. Near a triple tie the first-order width can be O(1)
+    even for a well-trained model (a large logit gap at the tie, with a third input just above
+    or below), and without the cap those points dominate the 5-input estimates. (Capping only
+    where the target itself changes, i.e. ignoring the competitor's crossing, differs at second
+    order: +20% instead of +18% for M_{16,5}, by Monte Carlo.)"""
     fl = Flops()
     err = 0.0
     flagged = 0.0
     n = rnn.n
-    for p, q, E, nu, roots, targets in tie_frames(n, task):
-        for R in roots:
+    for p, q, E, nu, roots, limits, targets in tie_frames(n, task):
+        if pairs is not None and (p, q) not in pairs:
+            continue
+        for R, lim in zip(roots, limits):
             for s in (+1, -1):
                 t, c = targets[s]
                 for cone, L in tie_pieces(rnn, Cone.simplicial(R), E, s * nu, fl):
@@ -175,7 +222,9 @@ def sliver_error(rnn, task, return_details=False):
                     if g <= 0:
                         flagged += 1.0  # count of non-thin pieces (diagnostic)
                         continue
-                    mu = first_moment(K, fl)
-                    err += PHI0 / g * float(-delta @ mu)
+                    if order_cap and lim:
+                        err += PHI0 * min_moment(K, [-delta / g] + lim, fl)
+                    else:
+                        err += PHI0 / g * float(-delta @ first_moment(K, fl))
     details = dict(flagged=flagged)
     return (err, fl, details) if return_details else (err, fl)

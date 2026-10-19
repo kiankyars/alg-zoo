@@ -66,15 +66,26 @@ def exact_table():
     return "\n".join(out)
 
 
+def _rel(x):
+    return f"{x:+.1e}" if abs(x) < 1e-4 else f"{x:+.2%}"
+
+
 def sliver_table():
     rows = sorted(_rows("results/sliver_table_n*.json"), key=lambda r: (r["n"], r["family"] != "M", r["d"]))
     if not rows:
         return "(pending)"
-    out = ["| model | exact error | tie-sliver law | relative difference |", "|---|---|---|---|"]
+    decomp = {}
+    if os.path.exists("results/sliver_decomposition.json"):
+        decomp = {(r["family"], r["d"], r["n"]): r for r in json.load(open("results/sliver_decomposition.json"))}
+    out = ["| model | exact error | first-order law | relative difference | order-truncated law | "
+           "relative difference | wrong inputs in one / two / no slivers (Monte Carlo) |",
+           "|---|---|---|---|---|---|---|"]
     for r in rows:
         name = ("M" if r["family"] == "M" else "AM") + f"_{{{r['d']},{r['n']}}}"
-        out.append(f"| `{name}` | {r['exact_error']:.4e} | {r['sliver_error']:.4e} | "
-                   + (f"{r['rel_diff']:+.1e}" if abs(r['rel_diff']) < 1e-4 else f"{r['rel_diff']:+.2%}") + " |")
+        dc = decomp.get((r["family"], r["d"], r["n"]))
+        shares = "-" if dc is None else " / ".join(f"{dc[k] / dc['error']:.1%}" for k in ("one", "two", "none"))
+        out.append(f"| `{name}` | {r['exact_error']:.4e} | {r['sliver_error']:.4e} | {_rel(r['sliver_rel_diff'])} | "
+                   f"{r['truncated_error']:.4e} | {_rel(r['truncated_rel_diff'])} | {shares} |")
     return "\n".join(out)
 
 
