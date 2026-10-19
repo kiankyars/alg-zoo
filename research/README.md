@@ -40,26 +40,31 @@ the 432-parameter `M_{16,10}` (`example_2nd_argmax()`, a different checkpoint fr
    1,216-parameter `M_{32,5}` and `AM_{32,5}`. Run time grows with the number of linear regions:
    `M_{32,5}` has 24 million leaf regions, cut into 310 million simplicial cones, and took 36
    minutes on 9 processes (the root cones are independent). The answers are numerically
-   converged. For the 4- and 5-input models checked (all `n = 4`, and `n = 5` with `d <= 5`),
-   recomputing every Gaussian measure at higher order changes them by at most about 10⁻¹¹. For
-   2- and 3-input models the measures are closed-form arcsines, accurate to about 10⁻⁹;
-   cancellation on very thin cones costs a little, as an independent well-conditioned
-   implementation showed. All 37 agree with 1.7 × 10⁷-sample Monte Carlo runs (|z| ≤ 2.4). The
-   four largest 5-input models also agree root cone by root cone: with 6.7 × 10⁷ fresh samples,
-   the χ² tests over their 240 root cones give p = 0.07–0.92. Matching even 10⁻⁹ precision by
-   sampling would take 10¹³–10¹⁷ samples, depending on the model's accuracy.
+   converged. For every 4- and 5-input model checked so far (all but `M_{32,5}`, `AM_{16,5}` and
+   `AM_{32,5}`, whose checks are still to run), recomputing every Gaussian measure at higher
+   order changes them by at most 4 × 10⁻¹¹. For 2- and 3-input models the measures are
+   closed-form arcsines, accurate to about 10⁻⁹; cancellation on very thin cones costs a little,
+   as an independent well-conditioned implementation showed. All 37 agree with 1.7 × 10⁷-sample
+   Monte Carlo runs (|z| ≤ 2.4). The four largest 5-input models also agree root cone by root
+   cone: with 6.7 × 10⁷ fresh samples, the χ² tests over their 240 root cones give p =
+   0.07–0.92. Matching even 10⁻⁹ precision by sampling would take 10¹³–10¹⁷ samples, depending
+   on the model's accuracy.
 3. **A mechanistic explanation of the residual error: the tie-sliver law.** The errors of
    well-trained models are thin wedges along tie hyperplanes. A first-order formula built from
    the logit gap on the tie hyperplane reproduces their error rate. For all eight `n = 2`
    models, where it reduces to ARC's `M_{2,2}` explanation, it matches the exact error to within
-   1.3 × 10⁻⁶ relative (3 × 10⁻¹¹ absolute). It is within 13% for every tested model (`n <= 4`)
-   with `d >= 6` and accuracy above 98%. For smaller or weaker models, whose errors are not
-   dominated by slivers, it is off by −76% to +96% (up to a factor of about 4).
+   1.3 × 10⁻⁶ relative (3 × 10⁻¹¹ absolute). It is within 13% for every tested model with
+   `n <= 4`, `d >= 6` and accuracy above 98%. For smaller or weaker models with `n <= 4`, whose
+   errors are not dominated by slivers, it is off by −76% to +96% (up to a factor of about 4).
+   It does not carry over to 5 inputs: it overestimates the error of every 5-input model tested
+   so far by 1.6 to 5.6 times, including `M_{16,5}` (accuracy 99.25%, 2.8 times). `M_{32,5}` and
+   `AM_{32,5}` are still to be checked.
 
 What is **not** solved: ARC's headline challenge `M_{16,10}`; matching sampling at intermediate
-budgets for 4- and 5-input models, where exact computation costs 10⁵–10⁹ forward passes; and,
+budgets for 4- and 5-input models, where exact computation costs 10⁵–10⁹ forward passes;
 among the 3-input models, the others (`M_{3,3}`, `M_{4,3}`, `M_{6,3}`, `M_{8,3}`) and the
-heaviest noise level for `M_{5,3}` and `M_{16,3}`. See [Limitations](#limitations).
+heaviest noise level for `M_{5,3}` and `M_{16,3}`; and a mechanistic explanation of the errors
+of 5-input models, which the tie-sliver law does not give. See [Limitations](#limitations).
 
 ### 1. MSE versus compute (3-input models, held-out noisy-weights test)
 
@@ -116,6 +121,7 @@ recomputed at higher order (Plackett with 28 instead of 20 nodes per panel, cuba
 instead of 7), as a check on numerical precision. The cost is in forward-pass equivalents. The
 Monte Carlo column uses 2²⁴ fresh samples; `z` is the difference in standard errors. For
 `n <= 3` the measures are closed form, so the higher-order change is zero by construction.
+`not run` marks a precision check that is still to run (`./run_tables.sh` resumes it).
 The small models `M_{2,3}`, `M_{2,4}`, `M_{3,4}` and the 5-input models with `d <= 5` are far
 from accurate and are included for completeness. `results/mc_roots.json` holds the per-root
 Monte Carlo checks of the four largest models.
@@ -151,13 +157,13 @@ Monte Carlo checks of the four largest models.
 | `M_{3,5}` | 27 | 0.3754419673 | 5e-12 | 1.55e+08 | 0.375440 | +0.01 |
 | `M_{4,5}` | 40 | 0.4284504356 | 1e-11 | 2.06e+08 | 0.428510 | -0.49 |
 | `M_{5,5}` | 55 | 0.5424323781 | 6e-12 | 4.29e+08 | 0.542502 | -0.57 |
-| `M_{6,5}` | 72 | 0.7028572423 | not run | 7.44e+08 | 0.702825 | +0.29 |
-| `M_{8,5}` | 112 | 0.8815144388 | not run | 7.09e+08 | 0.881561 | -0.59 |
-| `M_{16,5}` | 352 | 0.9925277274 | not run | 8.59e+08 | 0.992489 | +1.83 |
+| `M_{6,5}` | 72 | 0.7028572423 | 3e-11 | 7.44e+08 | 0.702825 | +0.29 |
+| `M_{8,5}` | 112 | 0.8815144388 | 4e-11 | 7.09e+08 | 0.881561 | -0.59 |
+| `M_{16,5}` | 352 | 0.9925277274 | 6e-12 | 8.59e+08 | 0.992489 | +1.83 |
 | `M_{32,5}` | 1216 | 0.9972959155 | not run | 9.29e+08 | 0.997287 | +0.67 |
 | `AM_{2,5}` | 16 | 0.2642094333 | 5e-14 | 2.99e+07 | 0.264125 | +0.78 |
 | `AM_{4,5}` | 40 | 0.3939526176 | 7e-12 | 2.78e+08 | 0.393813 | +1.17 |
-| `AM_{8,5}` | 112 | 0.6985511009 | not run | 5.45e+08 | 0.698462 | +0.80 |
+| `AM_{8,5}` | 112 | 0.6985511009 | 3e-11 | 5.45e+08 | 0.698462 | +0.80 |
 | `AM_{16,5}` | 352 | 0.9831036499 | not run | 8.63e+08 | 0.983124 | -0.64 |
 | `AM_{32,5}` | 1216 | 0.9955137455 | not run | 1.01e+09 | 0.995527 | -0.80 |
 <!-- /EXACT_TABLE -->
@@ -165,7 +171,8 @@ Monte Carlo checks of the four largest models.
 ### 3. The tie-sliver law
 
 First-order tie-sliver estimate of the error rate (`sliver.py`) against the exact error rate of
-the trained models:
+the trained models. The 5-input rows show where the law breaks down; `M_{32,5}` and `AM_{32,5}`
+are still to run (`./run_tables.sh` resumes them):
 
 <!-- SLIVER_TABLE -->
 | model | exact error | tie-sliver law | relative difference |
@@ -189,6 +196,11 @@ the trained models:
 | `M_{8,4}` | 1.2540e-02 | 1.4127e-02 | +12.65% |
 | `M_{16,4}` | 1.6932e-03 | 1.7793e-03 | +5.09% |
 | `M_{32,4}` | 1.1998e-03 | 1.3373e-03 | +11.46% |
+| `M_{6,5}` | 2.9714e-01 | 8.9346e-01 | +200.68% |
+| `M_{8,5}` | 1.1849e-01 | 3.9084e-01 | +229.86% |
+| `M_{16,5}` | 7.4723e-03 | 2.1148e-02 | +183.01% |
+| `AM_{8,5}` | 3.0145e-01 | 4.9695e-01 | +64.85% |
+| `AM_{16,5}` | 1.6896e-02 | 9.4125e-02 | +457.07% |
 <!-- /SLIVER_TABLE -->
 
 ## Method
