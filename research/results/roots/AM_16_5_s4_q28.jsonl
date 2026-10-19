@@ -36,3 +36,5 @@
 {"root": 34, "contrib": 0.007794999507609721, "rnn": 21052768.0, "split": 19622522.0, "measure": 10359975594.0, "seconds": 32.066444635391235, "cpu_seconds": 29.608490270999994, "splits": 7028, "leaves": 4202, "simplices": 95420}
 {"root": 39, "contrib": 0.0002566666555445279, "rnn": 7180816.0, "split": 5889133.0, "measure": 1542607240.0, "seconds": 4.4567060470581055, "cpu_seconds": 4.234785662000036, "splits": 2131, "leaves": 1368, "simplices": 25511}
 {"root": 37, "contrib": 0.0002531372235419015, "rnn": 12566480.0, "split": 9481753.0, "measure": 3852535361.0, "seconds": 10.1724374294281, "cpu_seconds": 10.337287545000038, "splits": 3465, "leaves": 2442, "simplices": 56320}
+{"root": 41, "contrib": 0.00025000203245392495, "rnn": 16500672.0, "split": 12815949.0, "measure": 3166470068.0, "seconds": 9.272905588150024, "cpu_seconds": 8.706912678000037, "splits": 4751, "leaves": 3287, "simplices": 37316}
+{"root": 40, "contrib": 0.007945324627547583, "rnn": 39896528.0, "split": 21837548.0, "measure": 5970739525.0, "seconds": 20.263156414031982, "cpu_seconds": 19.106644485000004, "splits": 9171, "leaves": 7369, "simplices": 35736}
