@@ -106,6 +106,56 @@ def slice_linear_moment(R, w, s=3, max_angle=0.3, return_pieces=False):
     return out
 
 
+def _theta(m, a):
+    """int_0^{atan a} cos^(m-1) t dt (a >= 0), in closed form for m <= 4."""
+    a = np.maximum(a, 0.0)
+    if m == 1:
+        return np.arctan(a)
+    s = a / np.sqrt(1 + a * a)  # sin(atan a)
+    if m == 2:
+        return s
+    if m == 3:
+        return np.arctan(a) / 2 + a / (2 * (1 + a * a))
+    if m == 4:
+        return s - s**3 / 3
+    raise NotImplementedError(m)
+
+
+def slice_sliver_measure(R, w, s=3, max_angle=0.3, return_pieces=False):
+    """Gaussian measure (in R^(m+1)) of the slivers {zeta + tau nu : zeta in K, 0 <= tau <= w . zeta}
+    over simplicial cones K with rays R (B, m, m) in an m-dim subspace, nu a unit normal to it and
+    w a linear functional that is nonnegative on K. In polar coordinates zeta = rho u, the sliver
+    over the ray u is the 2-d wedge {(rho, tau) : 0 <= tau <= rho (w . u)}, whose Gaussian measure
+    with the radial weight rho^(m-1) is C_(m+1) Theta_m(w . u), Theta_m(a) = int_0^{atan a}
+    cos^(m-1) t dt and C_(m+1) = (2 pi)^(-(m+1)/2) 2^((m-1)/2) Gamma((m+1)/2). So the measure is
+    C int_slice Theta_m(w . y / |y|) |y|^-m dA, integrated by GM cubature as in
+    slice_linear_moment. For thin slivers Theta_m(a) ~ a and it reduces to
+    phi(0) E[(w . zeta) 1_K]; unlike that, it keeps the decay of the Gaussian density across
+    the sliver, so it is exact for wide slivers too."""
+    R = np.asarray(R, dtype=np.float64)
+    B, m, _ = R.shape
+    C = (2 * math.pi) ** (-(m + 1) / 2) * 2 ** ((m - 1) / 2) * math.gamma((m + 1) / 2)
+    if m == 1:  # K is a ray u: the sliver is one 2-d wedge
+        u = R[:, 0] / np.linalg.norm(R[:, 0], axis=-1, keepdims=True)
+        out = C * _theta(1, u @ w)
+        return (out, B) if return_pieces else out
+    out = np.zeros(B)
+    leaves = _narrow_pieces(R, max_angle)
+    P, W = gm_rule(m - 1, s)
+    for Rs, idx in leaves:
+        u = Rs.sum(1)
+        u /= np.linalg.norm(u, axis=1, keepdims=True)
+        Y = Rs / (Rs @ u[:, :, None])  # slice vertices (b, m, m)
+        pts = np.einsum("pj,bjk->bpk", P, Y)
+        r = np.sqrt((pts**2).sum(-1))
+        f = _theta(m, (pts @ w) / r) * r ** (-m)
+        vals = C * np.abs(np.linalg.det(Y)) / math.factorial(m - 1) * (f @ W)
+        np.add.at(out, idx, vals)
+    if return_pieces:
+        return out, sum(len(i) for _, i in leaves)
+    return out
+
+
 def slice_measure(R, s=2, max_angle=0.5, return_pieces=False):
     """Gaussian measure of simplicial cones with rays R (B, n, n), by GM cubature of degree
     2s+1 on the slice. Cones whose rays span an angle > max_angle (radians) are bisected

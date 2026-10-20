@@ -28,7 +28,7 @@ import numpy as np
 
 from engine import TOL, Cone, Flops, _maximal, _pull, split, target_rank, triangulate
 from orthant import cone_measure
-from slice import slice_flops, slice_linear_moment
+from slice import slice_flops, slice_linear_moment, slice_sliver_measure
 
 PHI0 = 1.0 / math.sqrt(2 * math.pi)
 
@@ -37,15 +37,18 @@ def tie_frames(n, task):
     """Yields (p, q, E, nu, roots, limits, targets): E (n, n-1) orthonormal basis of H_pq whose
     first column is (e_p + e_q)/sqrt 2, nu = (e_p - e_q)/sqrt 2, roots = simplicial cones (rays
     in zeta coordinates) covering the part of H_pq where the tie is between the target rank and
-    an adjacent rank, limits[i] = the order limits of roots[i] (see below), and
-    targets = {side: (target, competitor)} for side in (+1, -1).
+    an adjacent rank, limits[i] = dict(target=..., other=...): the order limits of roots[i] (see
+    below; None if absent), and targets = {side: (target, competitor)} for side in (+1, -1).
 
     Order limits. Moving a distance tau off H_pq along +-nu, one tied value rises and the other
     falls by tau / sqrt 2, so the line leaves the order chamber of the tie face (the ordering
     changes) once the riser passes the object just above the tie, at
     tau = sqrt 2 x_above - zeta_0, or the faller passes the one just below, at
     tau = zeta_0 - sqrt 2 x_below. Within a root the ordering is fixed, so both are linear
-    functionals of zeta (nonnegative on the root); limits holds those that exist."""
+    functionals of zeta (nonnegative on the root). The "target" limit is the target's own crossing,
+    where the line reaches the target's other wall (the other tie of the target with an adjacent
+    rank); the "other" limit is the competitor's crossing, where the line leaves the chamber
+    through a wall at which the target does not change."""
     r = target_rank(task, n)
     m = n - 1
     for p, q in itertools.combinations(range(n), 2):
@@ -69,11 +72,14 @@ def tie_frames(n, task):
                 # perm[i] = object at sorted rank i; object 0 is the tie, object j>0 = others[j-1]
                 if perm[obj_rank] != 0:
                     continue
-                lim = []
+                up = down = None
                 if obj_rank >= 1:  # sqrt 2 zeta_above - zeta_0
-                    lim.append(math.sqrt(2) * np.eye(m)[perm[obj_rank - 1]] - np.eye(m)[0])
+                    up = math.sqrt(2) * np.eye(m)[perm[obj_rank - 1]] - np.eye(m)[0]
                 if obj_rank + 1 <= m - 1:  # zeta_0 - sqrt 2 zeta_below
-                    lim.append(np.eye(m)[0] - math.sqrt(2) * np.eye(m)[perm[obj_rank + 1]])
+                    down = np.eye(m)[0] - math.sqrt(2) * np.eye(m)[perm[obj_rank + 1]]
+                # the target is the faller for ties (r-1, r) and the riser for ties (r, r+1): its
+                # own crossing leads to its other target wall, the competitor's out of the chamber
+                lim = dict(target=down, other=up) if obj_rank == r - 1 else dict(target=up, other=down)
                 for k in range(m + 1):
                     Y = np.zeros((m, m))  # rows: rays in sorted object coordinates
                     for j in range(1, k + 1):
@@ -92,15 +98,16 @@ def tie_frames(n, task):
 def tie_pieces(rnn, cone, E, side_dir, fl):
     """Linear pieces of the RNN on a cone in H (zeta coordinates), taking for each neuron whose
     pre-activation vanishes identically on the piece the sign it has just off H in direction
-    side_dir (the one-sided limit). Yields (cone, L) with L the logits map in x coordinates."""
+    side_dir (the one-sided limit). Yields (cone, L, masks) with L the logits map in x
+    coordinates and masks (n, d) the activation pattern of the piece."""
     d, n = rnn.d, rnn.n
     m = E.shape[1]
     # stack items: (cone, t, H, (P, PE, sc) or None, S); as in engine.linear_pieces, children
     # inherit the step-t pre-activation map and their parent's ray pre-activations, so only
     # the new rays of a split are evaluated
-    stack = [(cone, 0, np.zeros((d, n)), None, None)]
+    stack = [(cone, 0, np.zeros((d, n)), None, None, ())]
     while stack:
-        cone, t, H, maps, S = stack.pop()
+        cone, t, H, maps, S, masks = stack.pop()
         split_done = False
         while t < n:
             if maps is None:
@@ -121,19 +128,20 @@ def tie_pieces(rnn, cone, E, side_dir, fl):
                 plus, minus, (Pi, Ni, Zi, W) = split(cone, PE[i], fl, parts=True)
                 SW = W @ PE.T
                 fl.rnn += 2 * len(W) * m * d
-                stack.append((plus, t, H, maps, np.concatenate([S[Pi], S[Zi], SW])))
-                stack.append((minus, t, H, maps, np.concatenate([S[Ni], S[Zi], SW])))
+                stack.append((plus, t, H, maps, np.concatenate([S[Pi], S[Zi], SW]), masks))
+                stack.append((minus, t, H, maps, np.concatenate([S[Ni], S[Zi], SW]), masks))
                 split_done = True
                 break
             zero = ~pos.any(0) & ~neg.any(0)
             mask = pos.any(0) | (zero & (P @ side_dir > TOL * sc))
             H = mask[:, None] * P
+            masks = masks + (mask,)
             fl.rnn += 2 * d * n + d * (t + 1)
             t += 1
             maps = S = None
         if not split_done:
             fl.rnn += 2 * len(rnn.Wo) * d * n
-            yield cone, rnn.Wo @ H
+            yield cone, rnn.Wo @ H, np.array(masks)
 
 
 def facet_measures(cone, fl):
@@ -217,21 +225,199 @@ def min_moment(K, widths, fl):
     return out
 
 
-def sliver_error(rnn, task, return_details=False, order_cap=True, pairs=None):
+def _caps(lim, cap):
+    """The width caps of a root as linear functionals: none, the chamber boundary (both order
+    limits) or the nearer-wall boundary (the bisector between the target's two walls, at a third
+    of the target's own limit, and the chamber exit through the competitor's crossing)."""
+    T, U = lim["target"], lim["other"]
+    if cap == "chamber":
+        return [c for c in (T, U) if c is not None]
+    if cap == "bisector":
+        return [c for c in (None if T is None else T / 3, U) if c is not None]
+    return []
+
+
+def _pattern_maps(rnn, masks):
+    """Pre-activation maps P_t (d, n) of every step and the logits map (n_out, n) of the linear
+    region with activation pattern masks (n, d)."""
+    d, n = rnn.d, rnn.n
+    H = np.zeros((d, n))
+    maps = []
+    for t in range(n):
+        P = rnn.Wh @ H
+        P[:, t] += rnn.Wi
+        maps.append(P)
+        H = masks[t][:, None] * P
+    return maps, rnn.Wo @ H
+
+
+def _sign(Q, f):
+    """+1 if the linear functional f is >= 0 on the cone Q, -1 if it is <= 0 (and not ~0), 0 if
+    it changes sign (with the same tolerance as engine.split, so split(Q, f) then cuts Q)."""
+    nrm = np.linalg.norm(f)
+    if nrm == 0:
+        return 1
+    v = Q.V @ (f / nrm)
+    pos, neg = (v > TOL).any(), (v < -TOL).any()
+    return 0 if pos and neg else (-1 if neg else 1)
+
+
+def sliver_measure(Q, w, fl):
+    """Gaussian measure of the sliver {zeta + tau nu : zeta in Q, 0 <= tau <= w . zeta} (exact,
+    including the decay of the density across the sliver; slice.slice_sliver_measure)."""
+    m = Q.V.shape[1]
+    if len(Q.V) < m:  # lower-dimensional (degenerate) cone: measure zero
+        return 0.0
+    T = triangulate(Q)
+    if T.dtype != np.float64 or len(T) == 0:  # no simplices: degenerate
+        return 0.0
+    vals, pieces = slice_sliver_measure(T, w, return_pieces=True)
+    fl.split += 5 * len(Q.V) * m
+    fl.measure += slice_flops(m, 3) * pieces
+    return float(vals.sum())
+
+
+def _signs(Q, F):
+    """Row-wise _sign for a matrix of functionals F (k, m): +1 (>= 0 on Q), -1 (<= 0, not ~0) or
+    0 (changes sign on Q)."""
+    nrm = np.linalg.norm(F, axis=1)
+    v = (Q.V @ F.T) / np.where(nrm > 0, nrm, 1.0)
+    pos, neg = (v > TOL).any(0), (v < -TOL).any(0)
+    return np.where(pos & neg, 0, np.where(neg, -1, 1))
+
+
+def _walk(rnn, Q, masks, E, sdir, t, caps, fl, tau0=None, depth=0, cache=None, max_depth=200):
+    """Gaussian measure of the true sliver over Q: along each normal line zeta + tau sdir
+    (zeta in Q, a piece of the tie hyperplane with activation pattern masks just off it), the
+    stretch 0 < tau < w(zeta) on which the prediction is not the target t, where w(zeta) is the
+    first tau at which t becomes the argmax, or the first cap.
+
+    The line is followed exactly through the linear regions it crosses. In the current region
+    every logit gap f_j = l_t - l_j and every pre-activation is linear in (zeta, tau), so the
+    first neuron flip, the first point where t wins and the caps are linear functionals of zeta.
+    Q is split until the order of these events is the same on all of it (a linear inequality
+    holds on a cone iff it holds at its rays). If a cap or the target winning comes first, the
+    sliver ends there; if a neuron flips first, the walk continues in the neighbouring region
+    (that neuron's sign toggled; continuity makes every other sign unchanged at the crossing),
+    from the crossing time tau0 (also linear in zeta)."""
+    m = Q.V.shape[1]
+    if tau0 is None:
+        tau0 = np.zeros(m)
+    if cache is None:
+        cache = {}
+    if depth > max_depth:
+        raise RuntimeError("sliver walk did not terminate")
+    key = masks.tobytes()
+    if key not in cache:
+        maps, L = _pattern_maps(rnn, masks)
+        fl.rnn += 2 * rnn.d * rnn.d * rnn.n + 2 * len(L) * rnn.d * rnn.n
+        D = L[t] - L  # (n_out, n): f_j(x) = D_j . x
+        Pall = np.concatenate(maps)  # (n d, n): every pre-activation map
+        on = masks.reshape(-1)
+        rate = Pall @ sdir
+        moving = np.where((on & (rate < 0)) | (~on & (rate > 0)))[0]
+        flips = -(Pall[moving] @ E) / rate[moving, None]  # pre-activation zero at tau = flip . zeta
+        cache[key] = (D @ E, D @ sdir, moving, flips)
+    a, b, moving, flips = cache[key]
+    again = lambda K, **kw: _walk(rnn, K, kw.get("masks", masks), E, sdir, t, caps, fl,
+                                  kw.get("tau0", tau0), kw.get("depth", depth), cache, max_depth)
+    others = np.array([j for j in range(len(a)) if j != t])
+    F0 = a[others] + b[others, None] * tau0  # every gap at the entry point, as a functional
+    st = _signs(Q, F0)
+    fl.split += 3 * len(Q.V) * m * len(others)
+    if (st == 0).any():  # the sign of every gap at entry must be the same on all of Q
+        return sum(again(K) for K in split(Q, F0[np.argmax(st == 0)], fl))
+    neg = others[st < 0]
+    if len(neg) == 0:  # t is the argmax at entry: no sliver starts here (or it ended at the crossing)
+        return 0.0 if depth == 0 else sliver_measure(Q, tau0, fl)
+    ends = list(caps)
+    if (b[neg] > 0).all():  # otherwise t never wins in this region
+        lo = _extreme(Q, -a[neg] / b[neg, None], fl, max)  # t wins once tau >= every lower root ...
+        if isinstance(lo, tuple):
+            return sum(again(K) for K in lo)
+        upper = others[(st > 0) & (b[others] < 0)]  # ... and while tau <= every upper root
+        wins = True
+        if len(upper):
+            hi = _extreme(Q, -a[upper] / b[upper, None], fl, min)
+            if isinstance(hi, tuple):
+                return sum(again(K) for K in hi)
+            sg = _signs(Q, (hi - lo)[None])[0]
+            if sg == 0:
+                return sum(again(K) for K in split(Q, hi - lo, fl))
+            wins = sg > 0
+        if wins:
+            ends.append(lo)
+    if not ends:
+        raise RuntimeError("unbounded sliver (no cap and the target never wins)")
+    ends = np.array(ends)
+    # neuron flips that can come before some end (a flip that is >= some end on all of Q is not)
+    V = Q.V
+    if len(flips):
+        diff = flips[:, None, :] - ends[None, :, :]  # (k, e, m)
+        nrm = np.linalg.norm(diff, axis=-1)
+        vals = np.einsum("rm,kem->rke", V, diff) / np.where(nrm > 0, nrm, 1.0)
+        after = (vals >= -TOL).all(0).any(1)  # (k,)
+        cand = flips[~after]
+        cand_id = moving[~after]
+    else:
+        cand, cand_id = flips, moving
+    fl.split += 2 * len(V) * m * (len(flips) * len(ends) + len(ends))
+    events = np.concatenate([ends, cand]) if len(cand) else ends
+    centre = V.sum(0)
+    k = int(np.argmin(events @ centre))
+    sg = _signs(Q, events - events[k])
+    sg[k] = 1
+    if (sg == 0).any():  # the first event must be the same on all of Q
+        return sum(again(K) for K in split(Q, events[np.argmax(sg == 0)] - events[k], fl))
+    if k < len(ends):
+        return sliver_measure(Q, events[k], fl)
+    new = masks.copy()
+    tt, i = divmod(int(cand_id[k - len(ends)]), rnn.d)
+    new[tt, i] = ~new[tt, i]
+    return again(Q, masks=new, tau0=events[k], depth=depth + 1)
+
+
+def _extreme(Q, funcs, fl, pick):
+    """The functional among the rows of funcs that is the largest (pick=max) or smallest
+    (pick=min) on all of Q, or, if that differs across Q, the two halves of Q split where two of
+    them cross."""
+    centre = Q.V.sum(0)
+    vals = funcs @ centre
+    k = int(np.argmax(vals) if pick is max else np.argmin(vals))
+    sg = _signs(Q, funcs - funcs[k])
+    sg[k] = 1
+    if (sg == 0).any():
+        return split(Q, funcs[np.argmax(sg == 0)] - funcs[k], fl)
+    return funcs[k]
+
+
+def sliver_error(rnn, task, return_details=False, order_cap=True, pairs=None, cap=None, width="first"):
     """Tie-sliver estimate of the error rate (1 - accuracy). Returns (error, Flops, details) with
     details = dict(flagged H-measure where the first-order picture fails). With `pairs` (a set
     of (p, q), p < q) only those tie hyperplanes are included (the sum over all pairs is the
     estimate; sliver_table.py uses this to spread one model over several processes).
 
-    order_cap=False is the first-order law: width -Delta / g everywhere on the wrong part of
-    H_pq. order_cap=True (the order-truncated law) caps the width at the order limits of the
-    root (see tie_frames), i.e. where the normal line leaves the order chamber. Within a chamber
-    the target is fixed and the model's errors are slivers on the target's two walls, so each
-    sliver is measured inside its chamber. Near a triple tie the first-order width can be O(1)
-    even for a well-trained model (a large logit gap at the tie, with a third input just above
-    or below), and without the cap those points dominate the 5-input estimates. (Capping only
-    where the target itself changes, i.e. ignoring the competitor's crossing, differs at second
-    order: +20% instead of +18% for M_{16,5}, by Monte Carlo.)"""
+    width="first" (the first-order laws): the width is -Delta / g on the part of H_pq where the
+    competitor c is the argmax at the tie, with Delta the gap l_t - l_c there and g its growth
+    rate moving off H_pq, and the measure is phi(0) E[width].
+    width="exact" (the exact sliver law): the width is the true length of the wrong stretch along
+    each normal line, followed exactly through the linear regions it crosses (_walk), and the
+    measure is the exact Gaussian measure of the sliver.
+
+    cap="none" (the first-order law with width="first"), "chamber" (the order-truncated law: the
+    width is capped where the normal line leaves the order chamber) or "bisector" (each wrong
+    input belongs to the nearer of its target's two walls, so the sliver of a wall stops at the
+    bisector between them, a third of the way to the other wall, and at the chamber's other
+    exits). With the bisector cap the slivers of different walls are disjoint, so the exact sliver
+    law is the measure of a set of wrong inputs: the exact error minus the wrong inputs that are
+    not on a wrong stretch from their nearer wall. Without cap, the old argument order_cap
+    selects "chamber" (True) or "none" (False).
+
+    Near a triple tie the first-order width can be O(1) even for a well-trained model (a large
+    logit gap at the tie, with a third input just above or below), and without a cap those points
+    dominate the 5-input estimates."""
+    if cap is None:
+        cap = "chamber" if order_cap else "none"
     fl = Flops()
     err = 0.0
     flagged = 0.0
@@ -240,9 +426,13 @@ def sliver_error(rnn, task, return_details=False, order_cap=True, pairs=None):
         if pairs is not None and (p, q) not in pairs:
             continue
         for R, lim in zip(roots, limits):
+            caps = _caps(lim, cap)
             for s in (+1, -1):
                 t, c = targets[s]
-                for cone, L in tie_pieces(rnn, Cone.simplicial(R), E, s * nu, fl):
+                for cone, L, masks in tie_pieces(rnn, Cone.simplicial(R), E, s * nu, fl):
+                    if width == "exact":
+                        err += _walk(rnn, cone, masks, E, s * nu, t, caps, fl)
+                        continue
                     dvec = L[t] - L[c]
                     delta = E.T @ dvec  # gap at the tie as a function of zeta
                     g = float(dvec @ (s * nu))  # growth of the gap moving into side s
@@ -260,8 +450,8 @@ def sliver_error(rnn, task, return_details=False, order_cap=True, pairs=None):
                     if g <= 0:
                         flagged += 1.0  # count of non-thin pieces (diagnostic)
                         continue
-                    if order_cap and lim:
-                        err += PHI0 * min_moment(K, [-delta / g] + lim, fl)
+                    if caps:
+                        err += PHI0 * min_moment(K, [-delta / g] + caps, fl)
                     else:
                         err += PHI0 * linear_moment(K, -delta / g, fl)
     details = dict(flagged=flagged)
