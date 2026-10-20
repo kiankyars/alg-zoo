@@ -121,7 +121,7 @@ def _theta(m, a):
     raise NotImplementedError(m)
 
 
-def slice_sliver_measure(R, w, s=3, max_angle=0.3, return_pieces=False):
+def slice_sliver_measure(R, w, s=3, max_angle=0.3, max_spread=0.25, return_pieces=False):
     """Gaussian measure (in R^(m+1)) of the slivers {zeta + tau nu : zeta in K, 0 <= tau <= w . zeta}
     over simplicial cones K with rays R (B, m, m) in an m-dim subspace, nu a unit normal to it and
     w a linear functional (m,), or one per cone (B, m), that is nonnegative on K. In polar coordinates zeta = rho u, the sliver
@@ -129,9 +129,10 @@ def slice_sliver_measure(R, w, s=3, max_angle=0.3, return_pieces=False):
     with the radial weight rho^(m-1) is C_(m+1) Theta_m(w . u), Theta_m(a) = int_0^{atan a}
     cos^(m-1) t dt and C_(m+1) = (2 pi)^(-(m+1)/2) 2^((m-1)/2) Gamma((m+1)/2). So the measure is
     C int_slice Theta_m(w . y / |y|) |y|^-m dA, integrated by GM cubature as in
-    slice_linear_moment. For thin slivers Theta_m(a) ~ a and it reduces to
-    phi(0) E[(w . zeta) 1_K]; unlike that, it keeps the decay of the Gaussian density across
-    the sliver, so it is exact for wide slivers too."""
+    slice_linear_moment, after bisecting cones that are wide or across which a = w . u varies by
+    more than max_spread. For thin slivers Theta_m(a) ~ a and it reduces to
+    phi(0) E[(w . zeta) 1_K]; unlike that, it keeps the decay of the Gaussian density across the
+    sliver, so it also holds for wide slivers."""
     R = np.asarray(R, dtype=np.float64)
     B, m, _ = R.shape
     w = np.broadcast_to(np.asarray(w, dtype=np.float64), (B, m))  # one functional, or one per cone
@@ -141,7 +142,29 @@ def slice_sliver_measure(R, w, s=3, max_angle=0.3, return_pieces=False):
         out = C * _theta(1, (u * w).sum(-1))
         return (out, B) if return_pieces else out
     out = np.zeros(B)
-    leaves = _narrow_pieces(R, max_angle)
+    # bisect cones that are wide, or across which the width ratio a = w . u varies a lot (Theta_m
+    # is far from linear for a ~ 1): until rays are within max_angle and a varies by <= max_spread
+    R = R / np.linalg.norm(R, axis=-1, keepdims=True)
+    work, leaves = [(R, np.arange(B))], []
+    while work:
+        Rs, idx = work.pop()
+        ang = np.arccos(np.clip(Rs @ np.swapaxes(Rs, -1, -2), -1, 1)).reshape(len(Rs), -1)
+        av = np.einsum("bjk,bk->bj", Rs, w[idx])
+        da = np.abs(av[:, :, None] - av[:, None, :]).reshape(len(Rs), -1)
+        wide = (ang.max(1) > max_angle) | (da.max(1) > max_spread)
+        if (~wide).any():
+            leaves.append((Rs[~wide], idx[~wide]))
+        if wide.any():
+            Rw, iw = Rs[wide], idx[wide]
+            e = np.where(ang[wide].max(1) > max_angle, ang[wide].argmax(1), da[wide].argmax(1))
+            ea, eb = e // m, e % m
+            ar = np.arange(len(Rw))
+            mid = Rw[ar, ea] + Rw[ar, eb]
+            mid /= np.linalg.norm(mid, axis=1, keepdims=True)
+            R1, R2 = Rw.copy(), Rw.copy()
+            R1[ar, ea] = mid
+            R2[ar, eb] = mid
+            work.append((np.concatenate([R1, R2]), np.concatenate([iw, iw])))
     P, W = gm_rule(m - 1, s)
     for Rs, idx in leaves:
         u = Rs.sum(1)

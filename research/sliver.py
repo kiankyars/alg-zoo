@@ -307,10 +307,11 @@ def _signs(Q, F):
 
 
 def _walk(rnn, Q, masks, E, sdir, t, caps, fl, acc, tau0=None, depth=0, cache=None, max_depth=200):
-    """Adds to the accumulator acc (_Slivers) the true sliver over Q: along each normal line zeta + tau sdir
-    (zeta in Q, a piece of the tie hyperplane with activation pattern masks just off it), the
-    stretch 0 < tau < w(zeta) on which the prediction is not the target t, where w(zeta) is the
-    first tau at which t becomes the argmax, or the first cap.
+    """Adds to the accumulator acc (_Slivers) the true sliver over Q: along each normal line
+    zeta + tau sdir (zeta in Q, a piece of the tie hyperplane with activation pattern masks just
+    off it), the stretch 0 < tau < w(zeta) on which the prediction is not the target t, where
+    w(zeta) is the first tau at which t is the predicted class, or the first cap. The prediction
+    is the argmax of the logits with ties going to the lowest index, as in engine.
 
     The line is followed exactly through the linear regions it crosses. In the current region
     every logit gap f_j = l_t - l_j and every pre-activation is linear in (zeta, tau), so the
@@ -318,8 +319,12 @@ def _walk(rnn, Q, masks, E, sdir, t, caps, fl, acc, tau0=None, depth=0, cache=No
     Q is split until the order of these events is the same on all of it (a linear inequality
     holds on a cone iff it holds at its rays). If a cap or the target winning comes first, the
     sliver ends there; if a neuron flips first, the walk continues in the neighbouring region
-    (that neuron's sign toggled; continuity makes every other sign unchanged at the crossing),
-    from the crossing time tau0 (also linear in zeta)."""
+    (that neuron's sign toggled; continuity keeps every other sign at the crossing), from the
+    crossing time tau0 (also linear in zeta). A flip at the same time as the target's win is
+    taken first: there the gaps can vanish together (they are then proportional to that neuron's
+    pre-activation) and the next region decides. A gap that vanishes at entry on all of Q takes
+    the sign it has just after entry (its slope along the line); a gap that vanishes on the whole
+    region (identical logits) follows the tie rule."""
     m = Q.V.shape[1]
     if tau0 is None:
         tau0 = np.zeros(m)
@@ -332,31 +337,43 @@ def _walk(rnn, Q, masks, E, sdir, t, caps, fl, acc, tau0=None, depth=0, cache=No
         maps, L = _pattern_maps(rnn, masks)
         fl.rnn += 2 * rnn.d * rnn.d * rnn.n + 2 * len(L) * rnn.d * rnn.n
         D = L[t] - L  # (n_out, n): f_j(x) = D_j . x
+        tied = np.abs(D).max(1) <= 1e-12 * (np.abs(L).max() + 1e-300)  # l_j = l_t on the region
         Pall = np.concatenate(maps)  # (n d, n): every pre-activation map
         on = masks.reshape(-1)
         rate = Pall @ sdir
         moving = np.where((on & (rate < 0)) | (~on & (rate > 0)))[0]
         flips = -(Pall[moving] @ E) / rate[moving, None]  # pre-activation zero at tau = flip . zeta
-        cache[key] = (D @ E, D @ sdir, moving, flips)
-    a, b, moving, flips = cache[key]
+        cache[key] = (D @ E, D @ sdir, tied, moving, flips)
+    a, b, tied, moving, flips = cache[key]
     again = lambda K, **kw: _walk(rnn, K, kw.get("masks", masks), E, sdir, t, caps, fl, acc,
                                   kw.get("tau0", tau0), kw.get("depth", depth), cache, max_depth)
     others = np.array([j for j in range(len(a)) if j != t])
     F0 = a[others] + b[others, None] * tau0  # every gap at the entry point, as a functional
-    st = _signs(Q, F0)
+    nrm = np.linalg.norm(F0, axis=1)
+    v = (Q.V @ F0.T) / np.where(nrm > 0, nrm, 1.0)
+    pos, negv = (v > TOL).any(0), (v < -TOL).any(0)
     fl.split += 3 * len(Q.V) * m * len(others)
-    if (st == 0).any():  # the sign of every gap at entry must be the same on all of Q
-        return sum(again(K) for K in split(Q, F0[np.argmax(st == 0)], fl))
+    mixed = pos & negv
+    if mixed.any():  # the sign of every gap at entry must be the same on all of Q
+        return sum(again(K) for K in split(Q, F0[np.argmax(mixed)], fl))
+    bscale = np.abs(b).max() + 1e-300
+    zero = ~pos & ~negv  # the gap vanishes at entry on all of Q: its sign just after entry is its slope's
+    st = np.where(negv, -1, 1)
+    st = np.where(zero & (b[others] < -1e-12 * bscale), -1, st)
+    t_first = others > t  # on an exact tie the lower index is predicted
+    flat = tied[others] | (zero & (np.abs(b[others]) <= 1e-12 * bscale))  # tied all along the line
+    st = np.where(flat, np.where(t_first, 1, -1), st)
     neg = others[st < 0]
     if len(neg) == 0:  # t is the argmax at entry: no sliver starts here (or it ended at the crossing)
         return 0.0 if depth == 0 else acc.add(Q, tau0)
-    ends = list(caps)
-    if (b[neg] > 0).all():  # otherwise t never wins in this region
+    lo = None
+    lower_ok = ~flat[st < 0] & (b[neg] > 0)
+    if lower_ok.all():  # otherwise t never wins in this region
         lo = _extreme(Q, -a[neg] / b[neg, None], fl, max)  # t wins once tau >= every lower root ...
         if isinstance(lo, tuple):
             return sum(again(K) for K in lo)
-        upper = others[(st > 0) & (b[others] < 0)]  # ... and while tau <= every upper root
-        wins = True
+        up = (st > 0) & ~flat & ~zero & (b[others] < 0)
+        upper = others[up]  # ... and while tau <= every upper root
         if len(upper):
             hi = _extreme(Q, -a[upper] / b[upper, None], fl, min)
             if isinstance(hi, tuple):
@@ -364,31 +381,38 @@ def _walk(rnn, Q, masks, E, sdir, t, caps, fl, acc, tau0=None, depth=0, cache=No
             sg = _signs(Q, (hi - lo)[None])[0]
             if sg == 0:
                 return sum(again(K) for K in split(Q, hi - lo, fl))
-            wins = sg > 0
-        if wins:
-            ends.append(lo)
-    if not ends:
-        raise RuntimeError("unbounded sliver (no cap and the target never wins)")
-    ends = np.array(ends)
-    # neuron flips that can come before some end (a flip that is >= some end on all of Q is not)
+            if sg < 0:
+                lo = None
     V = Q.V
+    caps_arr = np.array(caps).reshape(-1, m)
+    # neuron flips that can come before every end: a flip >= a cap on all of Q is not, nor a flip
+    # >= the target's win on all of Q unless it coincides with it (then the flip is taken first)
+    keep = np.ones(len(flips), bool)
     if len(flips):
-        diff = flips[:, None, :] - ends[None, :, :]  # (k, e, m)
-        nrm = np.linalg.norm(diff, axis=-1)
-        vals = np.einsum("rm,kem->rke", V, diff) / np.where(nrm > 0, nrm, 1.0)
-        after = (vals >= -TOL).all(0).any(1)  # (k,)
-        cand = flips[~after]
-        cand_id = moving[~after]
-    else:
-        cand, cand_id = flips, moving
-    fl.split += 2 * len(V) * m * (len(flips) * len(ends) + len(ends))
-    events = np.concatenate([ends, cand]) if len(cand) else ends
+        for ends, strict in ((caps_arr, False), (None if lo is None else lo[None], True)):
+            if ends is None or not len(ends):
+                continue
+            diff = flips[:, None, :] - ends[None, :, :]  # (k, e, m)
+            dn = np.linalg.norm(diff, axis=-1)
+            vals = np.einsum("rm,kem->rke", V, diff) / np.where(dn > 0, dn, 1.0)
+            after = (vals >= -TOL).all(0)
+            if strict:
+                after &= (vals > TOL).any(0)
+            keep &= ~after.any(1)
+    cand, cand_id = flips[keep], moving[keep]
+    fl.split += 2 * len(V) * m * len(flips) * (len(caps_arr) + 1)
+    # events in tie-breaking order: caps, flips, then the target's win
+    events = [caps_arr, cand] + ([lo[None]] if lo is not None else [])
+    kinds = ["cap"] * len(caps_arr) + ["flip"] * len(cand) + (["win"] if lo is not None else [])
+    events = np.concatenate(events)
+    if not len(events):
+        raise RuntimeError("unbounded sliver (no cap, no flip and the target never wins)")
     centre = V.sum(0)
     k = int(np.argmin(events @ centre))
     for _ in range(len(events)):  # the first event must be the same on all of Q
         diff = events - events[k]
-        nrm = np.linalg.norm(diff, axis=1)
-        vals = (V @ diff.T) / np.where(nrm > 0, nrm, 1.0)
+        dn = np.linalg.norm(diff, axis=1)
+        vals = (V @ diff.T) / np.where(dn > 0, dn, 1.0)
         low = vals.min(0)
         low[k] = 0.0
         if not (low < -TOL).any():
@@ -400,10 +424,10 @@ def _walk(rnn, Q, masks, E, sdir, t, caps, fl, acc, tau0=None, depth=0, cache=No
         k = j  # it is <= the current one on all of Q: it is the new candidate
     else:
         raise RuntimeError("no uniform first event")
-    if k < len(ends):
+    if kinds[k] != "flip":
         return acc.add(Q, events[k])
     new = masks.copy()
-    tt, i = divmod(int(cand_id[k - len(ends)]), rnn.d)
+    tt, i = divmod(int(cand_id[k - len(caps_arr)]), rnn.d)
     new[tt, i] = ~new[tt, i]
     return again(Q, masks=new, tau0=events[k], depth=depth + 1)
 
