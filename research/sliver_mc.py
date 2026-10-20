@@ -227,7 +227,7 @@ DECOMPOSE = ["M:3,3", "M:4,3", "M:5,3", "M:6,3", "M:8,3", "M:16,3", "M:32,3", "M
              "M:32,4", "M:6,5", "M:8,5", "M:16,5", "M:32,5", "AM:8,5", "AM:16,5", "AM:32,5"]
 
 
-WIDTHS = ["M:32,5", "AM:32,5"]  # models whose exact sliver law is too costly to compute exactly
+WIDTHS = ["M:32,5", "AM:32,5", "M:6,5", "M:8,5", "AM:8,5"]  # sliver_table.NO_EXACT: too costly to compute exactly
 
 
 if __name__ == "__main__":
