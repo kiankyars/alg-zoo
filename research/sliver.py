@@ -431,6 +431,8 @@ def _walk(rnn, Q, masks, E, sdir, t, caps, fl, acc, tau0=None, depth=0, cache=No
     kinds = ["cap"] * len(caps_arr) + ["flip"] * len(cand) + (["win"] if lo is not None else [])
     events = np.concatenate(events)
     if not len(events):
+        if m == 1:  # n = 2: no order caps, and the line stays wrong to infinity (width inf, ray u: w . u = inf)
+            return acc.add(Q, np.inf * V[0])
         raise RuntimeError("unbounded sliver (no cap, no flip and the target never wins)")
     centre = V.sum(0)
     size = np.linalg.norm(events, axis=1)

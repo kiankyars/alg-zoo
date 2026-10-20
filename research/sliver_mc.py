@@ -14,7 +14,12 @@
    first-order width, found by a geometric grid and bisection, with the chamber cap and with the
    bisector cap (each wrong input belongs to the nearer of its target's two walls). A sliver of
    width w over a tie point has Gaussian measure Phi(w) - 1/2 along its normal (phi(0) w to
-   first order), so with the bisector cap this estimates the exact sliver law.
+   first order), so with the bisector cap this estimates the exact sliver law. As a pointwise
+   reference it has two known limits: a correct stretch shorter than the grid spacing (2% of
+   tau) is stepped over, which overstates the width, and logits that are equal in exact
+   arithmetic are tied by float rounding. On the zoo models both are rare (1 in 6000 sampled
+   lines of AM_{8,5}, an upward bias of ~0.07 standard errors; none on the other models
+   checked); on lines where they occur, the exact walk of sliver.py was right.
 
 Usage: python sliver_mc.py <family:d,n> [law|decompose|widths] [log2 samples]
        python sliver_mc.py table [log2 samples]   (decomposition of every model in DECOMPOSE,
