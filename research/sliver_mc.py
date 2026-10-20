@@ -25,7 +25,7 @@ Usage: python sliver_mc.py <family:d,n> [law|decompose|widths] [log2 samples]
        python sliver_mc.py table [log2 samples]   (decomposition of every model in DECOMPOSE,
                                                    written to results/sliver_decomposition.json)
        python sliver_mc.py widths-table [log2 samples per tie] [specs]   (Monte Carlo exact sliver
-                                                   law of WIDTHS, written to results/sliver_widths.json)
+                                                   law of WIDTHS or specs, merged into results/sliver_widths.json)
 
 The grid checks (decompose, unattached, the grid stage of true_widths) can only miss short correct
 stretches between grid points, so they can only understate the share of wrong inputs that are not
@@ -235,26 +235,28 @@ DECOMPOSE = ["M:3,3", "M:4,3", "M:5,3", "M:6,3", "M:8,3", "M:16,3", "M:32,3", "M
              "M:32,4", "M:6,5", "M:8,5", "M:16,5", "M:32,5", "AM:8,5", "AM:16,5", "AM:32,5"]
 
 
-WIDTHS = ["M:32,5", "AM:32,5", "M:6,5", "M:8,5", "AM:8,5"]  # sliver_table.NO_EXACT: too costly to compute exactly
+WIDTHS = ["M:6,5", "M:8,5", "M:16,5", "M:32,5", "AM:8,5", "AM:16,5", "AM:32,5"]  # sliver_table.NO_EXACT
 
 
 if __name__ == "__main__":
     if sys.argv[1] == "widths-table":  # Monte Carlo exact sliver law (bisector cap, true widths)
         import json
+        import os
 
         N = 1 << int(sys.argv[2] if len(sys.argv) > 2 else 17)
-        rows = []
+        rows = json.load(open("results/sliver_widths.json")) if os.path.exists("results/sliver_widths.json") else []
         for spec in sys.argv[3:] or WIDTHS:
             rnn, (task, _) = load(spec)
             res = widths(rnn, task, N, np.random.default_rng(0))
             fam, rest = spec.split(":")
             d, n = map(int, rest.split(","))
+            rows = [r for r in rows if (r["family"], r["d"], r["n"]) != (fam, d, n)]  # replaced
             rows.append(dict(family=fam, d=d, n=n, samples_per_tie=N, exact_sliver=res["bisector"][0],
                              exact_sliver_se=res["bisector"][1], chamber_true=res["chamber"][0],
                              chamber_true_se=res["chamber"][1]))
             print(f"{spec}: Monte Carlo exact sliver law {res['bisector'][0]:.4e} ± {res['bisector'][1]:.1e}",
                   flush=True)
-        json.dump(rows, open("results/sliver_widths.json", "w"), indent=1)
+            json.dump(rows, open("results/sliver_widths.json", "w"), indent=1)
         sys.exit()
     if sys.argv[1] == "table":
         import json

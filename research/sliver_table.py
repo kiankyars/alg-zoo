@@ -2,9 +2,10 @@
 the order-truncated law (chamber cap), the first-order law with the bisector cap, and the exact
 sliver law (bisector cap, exact widths along the normals; see sliver.sliver_error). Exact errors
 are taken from results/exact_table_n*.json when available. The exact sliver law is not run for
-the 5-input models in NO_EXACT: the d = 32 ones would take ~100 CPU-hours each, and the weak
-(70-88% accurate) d <= 8 ones have wide slivers and long walks (no M_{6,5} tie pair finished in
-45 minutes). sliver_mc.py widths-table estimates it for them.
+5-input models (NO_EXACT): their normal lines cross so many linear regions that a single
+(root cone, side) unit of one tie of M_{16,5} did not finish in 30 CPU-minutes, out of 120 such
+units per tie, i.e. hundreds of CPU-hours per model. sliver_mc.py widths-table estimates it for
+them (it agrees pointwise with the exact walk on the 3- and 4-input models).
 
 Each (model, law, tie pair) is a separate job in a process pool, so the large 5-input models are
 spread over all workers; finished jobs are appended to results/sliver_table_n<ns>.jobs.jsonl,
@@ -36,7 +37,7 @@ KNOWN = {(r["family"], r["d"], r["n"]): r for p in glob.glob("results/exact_tabl
 WORKERS = int(os.environ.get("WORKERS", 9))
 LAWS = {"sliver": ("none", "first"), "truncated": ("chamber", "first"),  # name -> (cap, width)
         "bisector": ("bisector", "first"), "exact_sliver": ("bisector", "exact")}
-NO_EXACT = {("M", 32, 5), ("AM", 32, 5), ("M", 6, 5), ("M", 8, 5), ("AM", 8, 5)}
+NO_EXACT = {s for s in SPECS if s[2] == 5}
 
 
 @functools.lru_cache(maxsize=None)
