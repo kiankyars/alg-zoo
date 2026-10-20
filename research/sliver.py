@@ -306,6 +306,19 @@ def _signs(Q, F):
     return np.where(pos & neg, 0, np.where(neg, -1, 1))
 
 
+REL = 1e-9  # differences of functionals below REL times their size are rounding noise
+
+
+def _denoise(F, scale):
+    """F (..., m) with every functional whose norm is at most REL * scale set to zero. A difference
+    of two functionals that are equal in exact arithmetic (a gap that vanishes where a neuron
+    flips, the gap's root and that flip, two gaps proportional to one pre-activation) is rounding
+    noise; normalised by its own norm it would get an arbitrary sign of order one."""
+    F = np.array(F, dtype=np.float64)
+    F[np.linalg.norm(F, axis=-1) <= REL * np.asarray(scale)] = 0.0
+    return F
+
+
 def _walk(rnn, Q, masks, E, sdir, t, caps, fl, acc, tau0=None, depth=0, cache=None, max_depth=200):
     """Adds to the accumulator acc (_Slivers) the true sliver over Q: along each normal line
     zeta + tau sdir (zeta in Q, a piece of the tie hyperplane with activation pattern masks just
@@ -324,7 +337,9 @@ def _walk(rnn, Q, masks, E, sdir, t, caps, fl, acc, tau0=None, depth=0, cache=No
     taken first: there the gaps can vanish together (they are then proportional to that neuron's
     pre-activation) and the next region decides. A gap that vanishes at entry on all of Q takes
     the sign it has just after entry (its slope along the line); a gap that vanishes on the whole
-    region (identical logits) follows the tie rule."""
+    region (identical logits) follows the tie rule. A win at single points of the line (the
+    target's interval [lo, hi] reduced to a point) does not end the sliver. Functionals that are
+    equal in exact arithmetic are compared as equal (_denoise)."""
     m = Q.V.shape[1]
     if tau0 is None:
         tau0 = np.zeros(m)
@@ -349,6 +364,7 @@ def _walk(rnn, Q, masks, E, sdir, t, caps, fl, acc, tau0=None, depth=0, cache=No
                                   kw.get("tau0", tau0), kw.get("depth", depth), cache, max_depth)
     others = np.array([j for j in range(len(a)) if j != t])
     F0 = a[others] + b[others, None] * tau0  # every gap at the entry point, as a functional
+    F0 = _denoise(F0, np.linalg.norm(a[others], axis=1) + np.abs(b[others]) * np.linalg.norm(tau0))
     nrm = np.linalg.norm(F0, axis=1)
     v = (Q.V @ F0.T) / np.where(nrm > 0, nrm, 1.0)
     pos, negv = (v > TOL).any(0), (v < -TOL).any(0)
@@ -378,10 +394,11 @@ def _walk(rnn, Q, masks, E, sdir, t, caps, fl, acc, tau0=None, depth=0, cache=No
             hi = _extreme(Q, -a[upper] / b[upper, None], fl, min)
             if isinstance(hi, tuple):
                 return sum(again(K) for K in hi)
-            sg = _signs(Q, (hi - lo)[None])[0]
+            gap = _denoise(hi - lo, max(np.linalg.norm(hi), np.linalg.norm(lo)))
+            sg = _signs(Q, gap[None])[0]
             if sg == 0:
-                return sum(again(K) for K in split(Q, hi - lo, fl))
-            if sg < 0:
+                return sum(again(K) for K in split(Q, gap, fl))
+            if sg < 0 or not gap.any():  # t never wins, or only at single points of the line
                 lo = None
     V = Q.V
     caps_arr = np.array(caps).reshape(-1, m)
@@ -392,7 +409,8 @@ def _walk(rnn, Q, masks, E, sdir, t, caps, fl, acc, tau0=None, depth=0, cache=No
         for ends, strict in ((caps_arr, False), (None if lo is None else lo[None], True)):
             if ends is None or not len(ends):
                 continue
-            diff = flips[:, None, :] - ends[None, :, :]  # (k, e, m)
+            diff = _denoise(flips[:, None, :] - ends[None, :, :],  # (k, e, m)
+                            np.maximum(np.linalg.norm(flips, axis=1)[:, None], np.linalg.norm(ends, axis=1)[None]))
             dn = np.linalg.norm(diff, axis=-1)
             vals = np.einsum("rm,kem->rke", V, diff) / np.where(dn > 0, dn, 1.0)
             after = (vals >= -TOL).all(0)
@@ -408,9 +426,12 @@ def _walk(rnn, Q, masks, E, sdir, t, caps, fl, acc, tau0=None, depth=0, cache=No
     if not len(events):
         raise RuntimeError("unbounded sliver (no cap, no flip and the target never wins)")
     centre = V.sum(0)
+    size = np.linalg.norm(events, axis=1)
     k = int(np.argmin(events @ centre))
+    same = ~_denoise(events - events[k], np.maximum(size, size[k])).any(1)
+    k = int(np.argmax(same))  # of events equal to the earliest one, the first in tie-breaking order
     for _ in range(len(events)):  # the first event must be the same on all of Q
-        diff = events - events[k]
+        diff = _denoise(events - events[k], np.maximum(size, size[k]))
         dn = np.linalg.norm(diff, axis=1)
         vals = (V @ diff.T) / np.where(dn > 0, dn, 1.0)
         low = vals.min(0)
@@ -439,10 +460,12 @@ def _extreme(Q, funcs, fl, pick):
     centre = Q.V.sum(0)
     vals = funcs @ centre
     k = int(np.argmax(vals) if pick is max else np.argmin(vals))
-    sg = _signs(Q, funcs - funcs[k])
+    size = np.linalg.norm(funcs, axis=1)
+    diff = _denoise(funcs - funcs[k], np.maximum(size, size[k]))
+    sg = _signs(Q, diff)
     sg[k] = 1
     if (sg == 0).any():
-        return split(Q, funcs[np.argmax(sg == 0)] - funcs[k], fl)
+        return split(Q, diff[np.argmax(sg == 0)], fl)
     return funcs[k]
 
 
