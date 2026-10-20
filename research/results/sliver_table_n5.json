@@ -13,6 +13,10 @@
   "truncated_rel_diff": -0.16698444624293912,
   "truncated_cost": 9035856.970588235,
   "truncated_seconds": 131.30661273002625,
+  "bisector_error": 0.16950466932918673,
+  "bisector_rel_diff": -0.42955140278318904,
+  "bisector_cost": 9177129.029411765,
+  "bisector_seconds": 48.68708515167236,
   "rel_diff": 2.0068259745948076
  },
  {
@@ -29,6 +33,10 @@
   "truncated_rel_diff": -0.22268348730464982,
   "truncated_cost": 8328487.12202381,
   "truncated_seconds": 286.61974000930786,
+  "bisector_error": 0.07892427496730688,
+  "bisector_rel_diff": -0.33389120036914993,
+  "bisector_cost": 8512195.592261905,
+  "bisector_seconds": 95.84989976882935,
   "rel_diff": 2.298644054388635
  },
  {
@@ -45,6 +53,10 @@
   "truncated_rel_diff": 0.1845607070628052,
   "truncated_cost": 10415031.497888513,
   "truncated_seconds": 1057.644564151764,
+  "bisector_error": 0.007761814822642032,
+  "bisector_rel_diff": 0.03874888288330021,
+  "bisector_cost": 10512505.264358107,
+  "bisector_seconds": 1087.0685160160065,
   "rel_diff": 1.8301402187175566
  },
  {
@@ -61,6 +73,10 @@
   "truncated_rel_diff": 0.05307433371038844,
   "truncated_cost": 17156868.491168477,
   "truncated_seconds": 6516.68456029892,
+  "bisector_error": 0.0027823689628297564,
+  "bisector_rel_diff": 0.02895044743635054,
+  "bisector_cost": 17250316.96037138,
+  "bisector_seconds": 4941.366390943527,
   "rel_diff": 0.18855524623193518
  },
  {
@@ -77,6 +93,10 @@
   "truncated_rel_diff": -0.48087136889892634,
   "truncated_cost": 6647002.732142857,
   "truncated_seconds": 206.60126948356628,
+  "bisector_error": 0.12048753887105762,
+  "bisector_rel_diff": -0.6003052615767932,
+  "bisector_cost": 6797899.785714285,
+  "bisector_seconds": 88.33387494087219,
   "rel_diff": 0.6485454870945839
  },
  {
@@ -93,6 +113,10 @@
   "truncated_rel_diff": 0.16617001266177087,
   "truncated_cost": 11985444.149493244,
   "truncated_seconds": 1107.6440818309784,
+  "bisector_error": 0.018583825200862915,
+  "bisector_rel_diff": 0.09987216558734581,
+  "bisector_cost": 12086329.507179054,
+  "bisector_seconds": 1274.9588932991028,
   "rel_diff": 4.570726290641223
  },
  {
@@ -109,6 +133,10 @@
   "truncated_rel_diff": 0.04272029283969181,
   "truncated_cost": 19657421.770606883,
   "truncated_seconds": 7773.743486404419,
+  "bisector_error": 0.004583164235709883,
+  "bisector_rel_diff": 0.0216014758713971,
+  "bisector_cost": 19778203.831748188,
+  "bisector_seconds": 5794.703284978867,
   "rel_diff": 0.1775576301682036
  }
 ]
