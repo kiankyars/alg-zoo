@@ -71,25 +71,32 @@ def _rel(x):
 
 
 def sliver_table():
+    """The sliver laws, and the exact decomposition of the order-truncated law's error:
+    truncated - exact = overlaps (truncated - bisector) + bending (bisector - exact sliver law)
+    - unattached (exact - exact sliver law), all as fractions of the exact error."""
     rows = sorted(_rows("results/sliver_table_n*.json"), key=lambda r: (r["n"], r["family"] != "M", r["d"]))
     if not rows:
         return "(pending)"
-    decomp = {}
-    if os.path.exists("results/sliver_decomposition.json"):
-        decomp = {(r["family"], r["d"], r["n"]): r for r in json.load(open("results/sliver_decomposition.json"))}
-    out = ["| model | exact error | first-order law | relative difference | order-truncated law | "
-           "relative difference | wrong inputs in one / two / no slivers | gap bending |",
-           "|---|---|---|---|---|---|---|---|"]
+    mc = {}
+    if os.path.exists("results/sliver_widths.json"):  # Monte Carlo exact sliver law where not computed
+        mc = {(r["family"], r["d"], r["n"]): r for r in json.load(open("results/sliver_widths.json"))}
+    out = ["| model | exact error | first-order law | order-truncated law | bisector law | exact sliver law | "
+           "overlaps | bending | unattached |", "|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
+        key = (r["family"], r["d"], r["n"])
         name = ("M" if r["family"] == "M" else "AM") + f"_{{{r['d']},{r['n']}}}"
-        dc = decomp.get((r["family"], r["d"], r["n"]))
-        shares = bend = "-"
-        if dc is not None:
-            shares = " / ".join(f"{dc[k] / dc['error']:.1%}" for k in ("one", "two", "none"))
-            # truncated law - exact = (law - sum of true slivers) + overlaps - errors in no sliver
-            bend = f"{r['truncated_rel_diff'] - (dc['two'] - dc['none']) / dc['error']:+.1%}"
-        out.append(f"| `{name}` | {r['exact_error']:.4e} | {r['sliver_error']:.4e} | {_rel(r['sliver_rel_diff'])} | "
-                   f"{r['truncated_error']:.4e} | {_rel(r['truncated_rel_diff'])} | {shares} | {bend} |")
+        ex = r["exact_error"]
+        cells = [f"`{name}`", f"{ex:.4e}"] + [_rel(r[f"{k}_rel_diff"]) if f"{k}_rel_diff" in r else "-"
+                                              for k in ("sliver", "truncated", "bisector")]
+        es, note = r.get("exact_sliver_error"), ""
+        if es is None and key in mc:
+            es, note = mc[key]["exact_sliver"], f" (MC ±{mc[key]['exact_sliver_se'] / ex:.1%})"
+        if es is None:
+            cells += ["-"] * 4
+        else:
+            cells += [_rel((es - ex) / ex) + note, _rel((r["truncated_error"] - r["bisector_error"]) / ex),
+                      _rel((r["bisector_error"] - es) / ex), _rel((ex - es) / ex)]
+        out.append("| " + " | ".join(cells) + " |")
     return "\n".join(out)
 
 
@@ -97,15 +104,14 @@ def seeds_table():
     if not os.path.exists("results/sliver_seeds.json"):
         return "(pending)"
     rows = json.load(open("results/sliver_seeds.json"))
-    out = ["| model | seed | error | how | first-order law | order-truncated law | "
-           "wrong inputs in one / two / no slivers |", "|---|---|---|---|---|---|---|"]
+    out = ["| model | seed | error | how | first-order law | order-truncated law | bisector law | "
+           "exact sliver law |", "|---|---|---|---|---|---|---|---|"]
     for r in sorted(rows, key=lambda r: (r["n"], r["family"] != "M", r["d"], r["seed"])):
         name = ("M" if r["family"] == "M" else "AM") + f"_{{{r['d']},{r['n']}}}"
-        shares = " / ".join(f"{r[k]:.1%}" for k in ("one", "two", "none")) if "two" in r else "-"
         how = "exact" if r["method"] == "exact" else f"MC ±{r['error_se'] / r['error']:.1%}"
-        out.append(f"| `{name}` | {r['seed']} | {r['error']:.3e} | {how} | "
-                   f"{_rel((r['first_order'] - r['error']) / r['error'])} | "
-                   f"{_rel((r['truncated'] - r['error']) / r['error'])} | {shares} |")
+        rel = lambda k: _rel((r[k] - r["error"]) / r["error"]) if k in r else "-"
+        out.append(f"| `{name}` | {r['seed']} | {r['error']:.3e} | {how} | {rel('first_order')} | "
+                   f"{rel('truncated')} | {rel('bisector')} | {rel('exact_sliver')} |")
     return "\n".join(out)
 
 
