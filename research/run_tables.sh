@@ -9,6 +9,7 @@ $PY sliver_table.py 2 3 4 2>&1 | grep -v Warning | grep -v "c = c" >| results/sl
 $PY exact_table.py 5 2>&1 | grep -v Warning | grep -v "c = c" >| results/exact_table_n5.txt
 $PY sliver_table.py 5 2>&1 | grep -v Warning | grep -v "c = c" >| results/sliver_table_n5.txt
 $PY sliver_mc.py table 2>&1 | grep -v Warning  # where the wrong inputs lie (one / two / no slivers)
+$PY sliver_mc.py widths-table 2>&1 | grep -v Warning  # Monte Carlo exact sliver law for sliver_table.NO_EXACT
 for spec in M:16,5 M:32,5 AM:16,5 AM:32,5; do  # per-root Monte Carlo check of the largest models
   $PY mc_roots.py $spec 2>&1 | grep -v Warning
 done

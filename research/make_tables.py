@@ -73,15 +73,18 @@ def _rel(x):
 def sliver_table():
     """The sliver laws, and the exact decomposition of the order-truncated law's error:
     truncated - exact = overlaps (truncated - bisector) + bending (bisector - exact sliver law)
-    - unattached (exact - exact sliver law), all as fractions of the exact error."""
+    - unattached (exact - exact sliver law), all as fractions of the exact error; then the Monte
+    Carlo shares of the wrong inputs in one / two / no slivers (sliver_mc.py table)."""
     rows = sorted(_rows("results/sliver_table_n*.json"), key=lambda r: (r["n"], r["family"] != "M", r["d"]))
     if not rows:
         return "(pending)"
-    mc = {}
+    mc, decomp = {}, {}
     if os.path.exists("results/sliver_widths.json"):  # Monte Carlo exact sliver law where not computed
         mc = {(r["family"], r["d"], r["n"]): r for r in json.load(open("results/sliver_widths.json"))}
+    if os.path.exists("results/sliver_decomposition.json"):  # Monte Carlo: wrong inputs in 1 / 2 / 0 slivers
+        decomp = {(r["family"], r["d"], r["n"]): r for r in json.load(open("results/sliver_decomposition.json"))}
     out = ["| model | exact error | first-order law | order-truncated law | bisector law | exact sliver law | "
-           "overlaps | bending | unattached |", "|---|---|---|---|---|---|---|---|---|"]
+           "overlaps | bending | unattached | in one / two / no slivers |", "|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         key = (r["family"], r["d"], r["n"])
         name = ("M" if r["family"] == "M" else "AM") + f"_{{{r['d']},{r['n']}}}"
@@ -96,6 +99,8 @@ def sliver_table():
         else:
             cells += [_rel((es - ex) / ex) + note, _rel((r["truncated_error"] - r["bisector_error"]) / ex),
                       _rel((r["bisector_error"] - es) / ex), _rel((ex - es) / ex)]
+        dc = decomp.get(key)
+        cells.append(" / ".join(f"{dc[k] / dc['error']:.1%}" for k in ("one", "two", "none")) if dc else "-")
         out.append("| " + " | ".join(cells) + " |")
     return "\n".join(out)
 

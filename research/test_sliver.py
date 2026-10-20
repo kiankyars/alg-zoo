@@ -1,6 +1,7 @@
 """Check the tie-sliver laws: the exact (cone-geometry) laws of sliver.py against independent Monte
 Carlo estimates of the same formulas (sliver_mc.py), and against the exact error.
 
+* the sliver measure (slice.slice_sliver_measure) vs direct sampling of random slivers;
 * first-order and order-truncated laws vs sliver_mc.law (finite differences on sampled tie points);
 * the exact sliver law (bisector cap, exact widths) vs sliver_mc.widths (true widths found by a
   grid and bisection along sampled normal lines, with numpy's argmax, i.e. ties to the lowest index).
@@ -10,11 +11,30 @@ import sys
 import time
 
 import numpy as np
+from scipy.special import ndtr
 
 from engine import exact_accuracy
 from evaluate import load
+from slice import slice_sliver_measure
 from sliver import sliver_error
 from sliver_mc import law, widths
+
+rng = np.random.default_rng(0)
+for m in (1, 2, 3, 4):  # slivers {zeta + tau nu : zeta in K, 0 <= tau <= w . zeta} in R^(m+1)
+    R = rng.standard_normal((1, m, m)) + 1.5  # a random simplicial cone (rows are rays)
+    w = np.linalg.solve(R[0], rng.uniform(0.1, 3.0, m))  # w . ray in [0.1, 3]: thin to wide slivers
+    exact = slice_sliver_measure(R, w)[0]
+    # Monte Carlo over zeta of P(0 <= tau <= w . zeta) = Phi(w . zeta) - 1/2 on K (no cubature, no polar form)
+    N, s1, s2 = 1 << 24, 0.0, 0.0
+    for _ in range(16):
+        Z = rng.standard_normal((N // 16, m))
+        inside = (np.linalg.solve(R[0].T, Z.T) >= 0).all(0)  # zeta = coef @ rays with coef >= 0
+        v = np.where(inside, ndtr(Z @ w) - 0.5, 0.0)
+        s1, s2 = s1 + v.sum(), s2 + (v * v).sum()
+    mc = s1 / N
+    se = np.sqrt((s2 / N - mc * mc) / N)
+    print(f"sliver measure, m = {m}: {exact:.6e} | Monte Carlo {mc:.6e} ± {se:.1e} (z = {(exact - mc) / se:+.2f})",
+          flush=True)
 
 for spec in sys.argv[1:] or ["M:2,2", "M:3,3", "M:4,3", "M:8,3", "M:32,3", "M:8,4", "M:16,4"]:
     rnn, (task, _) = load(spec)
