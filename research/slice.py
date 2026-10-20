@@ -124,7 +124,7 @@ def _theta(m, a):
 def slice_sliver_measure(R, w, s=3, max_angle=0.3, return_pieces=False):
     """Gaussian measure (in R^(m+1)) of the slivers {zeta + tau nu : zeta in K, 0 <= tau <= w . zeta}
     over simplicial cones K with rays R (B, m, m) in an m-dim subspace, nu a unit normal to it and
-    w a linear functional that is nonnegative on K. In polar coordinates zeta = rho u, the sliver
+    w a linear functional (m,), or one per cone (B, m), that is nonnegative on K. In polar coordinates zeta = rho u, the sliver
     over the ray u is the 2-d wedge {(rho, tau) : 0 <= tau <= rho (w . u)}, whose Gaussian measure
     with the radial weight rho^(m-1) is C_(m+1) Theta_m(w . u), Theta_m(a) = int_0^{atan a}
     cos^(m-1) t dt and C_(m+1) = (2 pi)^(-(m+1)/2) 2^((m-1)/2) Gamma((m+1)/2). So the measure is
@@ -134,10 +134,11 @@ def slice_sliver_measure(R, w, s=3, max_angle=0.3, return_pieces=False):
     the sliver, so it is exact for wide slivers too."""
     R = np.asarray(R, dtype=np.float64)
     B, m, _ = R.shape
+    w = np.broadcast_to(np.asarray(w, dtype=np.float64), (B, m))  # one functional, or one per cone
     C = (2 * math.pi) ** (-(m + 1) / 2) * 2 ** ((m - 1) / 2) * math.gamma((m + 1) / 2)
     if m == 1:  # K is a ray u: the sliver is one 2-d wedge
         u = R[:, 0] / np.linalg.norm(R[:, 0], axis=-1, keepdims=True)
-        out = C * _theta(1, u @ w)
+        out = C * _theta(1, (u * w).sum(-1))
         return (out, B) if return_pieces else out
     out = np.zeros(B)
     leaves = _narrow_pieces(R, max_angle)
@@ -148,7 +149,7 @@ def slice_sliver_measure(R, w, s=3, max_angle=0.3, return_pieces=False):
         Y = Rs / (Rs @ u[:, :, None])  # slice vertices (b, m, m)
         pts = np.einsum("pj,bjk->bpk", P, Y)
         r = np.sqrt((pts**2).sum(-1))
-        f = _theta(m, (pts @ w) / r) * r ** (-m)
+        f = _theta(m, np.einsum("bpk,bk->bp", pts, w[idx]) / r) * r ** (-m)
         vals = C * np.abs(np.linalg.det(Y)) / math.factorial(m - 1) * (f @ W)
         np.add.at(out, idx, vals)
     if return_pieces:

@@ -262,19 +262,39 @@ def _sign(Q, f):
     return 0 if pos and neg else (-1 if neg else 1)
 
 
-def sliver_measure(Q, w, fl):
-    """Gaussian measure of the sliver {zeta + tau nu : zeta in Q, 0 <= tau <= w . zeta} (exact,
-    including the decay of the density across the sliver; slice.slice_sliver_measure)."""
-    m = Q.V.shape[1]
-    if len(Q.V) < m:  # lower-dimensional (degenerate) cone: measure zero
+class _Slivers:
+    """Collects sliver cones (triangulated: simplicial cones and their width functionals) and
+    measures them in batches (slice.slice_sliver_measure: exact Gaussian measure of
+    {zeta + tau nu : zeta in K, 0 <= tau <= w . zeta}, including the decay of the density
+    across the sliver)."""
+
+    def __init__(self, fl, batch=4096):
+        self.fl, self.batch, self.total = fl, batch, 0.0
+        self.T, self.W, self.size = [], [], 0
+
+    def add(self, Q, w):
+        m = Q.V.shape[1]
+        if len(Q.V) < m:  # lower-dimensional (degenerate) cone: measure zero
+            return 0.0
+        T = triangulate(Q)
+        if T.dtype != np.float64 or len(T) == 0:  # no simplices: degenerate
+            return 0.0
+        self.fl.split += 5 * len(Q.V) * m
+        self.T.append(T)
+        self.W.append(np.broadcast_to(w, (len(T), m)))
+        self.size += len(T)
+        if self.size >= self.batch:
+            self.flush()
         return 0.0
-    T = triangulate(Q)
-    if T.dtype != np.float64 or len(T) == 0:  # no simplices: degenerate
-        return 0.0
-    vals, pieces = slice_sliver_measure(T, w, return_pieces=True)
-    fl.split += 5 * len(Q.V) * m
-    fl.measure += slice_flops(m, 3) * pieces
-    return float(vals.sum())
+
+    def flush(self):
+        if self.T:
+            T = np.concatenate(self.T)
+            vals, pieces = slice_sliver_measure(T, np.concatenate(self.W), return_pieces=True)
+            self.fl.measure += slice_flops(T.shape[1], 3) * pieces
+            self.total += float(vals.sum())
+            self.T, self.W, self.size = [], [], 0
+        return self.total
 
 
 def _signs(Q, F):
@@ -286,8 +306,8 @@ def _signs(Q, F):
     return np.where(pos & neg, 0, np.where(neg, -1, 1))
 
 
-def _walk(rnn, Q, masks, E, sdir, t, caps, fl, tau0=None, depth=0, cache=None, max_depth=200):
-    """Gaussian measure of the true sliver over Q: along each normal line zeta + tau sdir
+def _walk(rnn, Q, masks, E, sdir, t, caps, fl, acc, tau0=None, depth=0, cache=None, max_depth=200):
+    """Adds to the accumulator acc (_Slivers) the true sliver over Q: along each normal line zeta + tau sdir
     (zeta in Q, a piece of the tie hyperplane with activation pattern masks just off it), the
     stretch 0 < tau < w(zeta) on which the prediction is not the target t, where w(zeta) is the
     first tau at which t becomes the argmax, or the first cap.
@@ -319,7 +339,7 @@ def _walk(rnn, Q, masks, E, sdir, t, caps, fl, tau0=None, depth=0, cache=None, m
         flips = -(Pall[moving] @ E) / rate[moving, None]  # pre-activation zero at tau = flip . zeta
         cache[key] = (D @ E, D @ sdir, moving, flips)
     a, b, moving, flips = cache[key]
-    again = lambda K, **kw: _walk(rnn, K, kw.get("masks", masks), E, sdir, t, caps, fl,
+    again = lambda K, **kw: _walk(rnn, K, kw.get("masks", masks), E, sdir, t, caps, fl, acc,
                                   kw.get("tau0", tau0), kw.get("depth", depth), cache, max_depth)
     others = np.array([j for j in range(len(a)) if j != t])
     F0 = a[others] + b[others, None] * tau0  # every gap at the entry point, as a functional
@@ -329,7 +349,7 @@ def _walk(rnn, Q, masks, E, sdir, t, caps, fl, tau0=None, depth=0, cache=None, m
         return sum(again(K) for K in split(Q, F0[np.argmax(st == 0)], fl))
     neg = others[st < 0]
     if len(neg) == 0:  # t is the argmax at entry: no sliver starts here (or it ended at the crossing)
-        return 0.0 if depth == 0 else sliver_measure(Q, tau0, fl)
+        return 0.0 if depth == 0 else acc.add(Q, tau0)
     ends = list(caps)
     if (b[neg] > 0).all():  # otherwise t never wins in this region
         lo = _extreme(Q, -a[neg] / b[neg, None], fl, max)  # t wins once tau >= every lower root ...
@@ -365,12 +385,23 @@ def _walk(rnn, Q, masks, E, sdir, t, caps, fl, tau0=None, depth=0, cache=None, m
     events = np.concatenate([ends, cand]) if len(cand) else ends
     centre = V.sum(0)
     k = int(np.argmin(events @ centre))
-    sg = _signs(Q, events - events[k])
-    sg[k] = 1
-    if (sg == 0).any():  # the first event must be the same on all of Q
-        return sum(again(K) for K in split(Q, events[np.argmax(sg == 0)] - events[k], fl))
+    for _ in range(len(events)):  # the first event must be the same on all of Q
+        diff = events - events[k]
+        nrm = np.linalg.norm(diff, axis=1)
+        vals = (V @ diff.T) / np.where(nrm > 0, nrm, 1.0)
+        low = vals.min(0)
+        low[k] = 0.0
+        if not (low < -TOL).any():
+            break
+        j = int(np.argmin(low))  # split along the event that undercuts the current one the most
+        plus, minus = split(Q, diff[j], fl)
+        if plus is not None and minus is not None:
+            return sum(again(K) for K in (plus, minus))
+        k = j  # it is <= the current one on all of Q: it is the new candidate
+    else:
+        raise RuntimeError("no uniform first event")
     if k < len(ends):
-        return sliver_measure(Q, events[k], fl)
+        return acc.add(Q, events[k])
     new = masks.copy()
     tt, i = divmod(int(cand_id[k - len(ends)]), rnn.d)
     new[tt, i] = ~new[tt, i]
@@ -422,6 +453,7 @@ def sliver_error(rnn, task, return_details=False, order_cap=True, pairs=None, ca
     err = 0.0
     flagged = 0.0
     n = rnn.n
+    acc = _Slivers(fl)
     for p, q, E, nu, roots, limits, targets in tie_frames(n, task):
         if pairs is not None and (p, q) not in pairs:
             continue
@@ -431,7 +463,7 @@ def sliver_error(rnn, task, return_details=False, order_cap=True, pairs=None, ca
                 t, c = targets[s]
                 for cone, L, masks in tie_pieces(rnn, Cone.simplicial(R), E, s * nu, fl):
                     if width == "exact":
-                        err += _walk(rnn, cone, masks, E, s * nu, t, caps, fl)
+                        _walk(rnn, cone, masks, E, s * nu, t, caps, fl, acc)
                         continue
                     dvec = L[t] - L[c]
                     delta = E.T @ dvec  # gap at the tie as a function of zeta
@@ -454,5 +486,6 @@ def sliver_error(rnn, task, return_details=False, order_cap=True, pairs=None, ca
                         err += PHI0 * min_moment(K, [-delta / g] + caps, fl)
                     else:
                         err += PHI0 * linear_moment(K, -delta / g, fl)
+    err += acc.flush()
     details = dict(flagged=flagged)
     return (err, fl, details) if return_details else (err, fl)
