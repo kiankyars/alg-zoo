@@ -44,10 +44,11 @@ def tie_types(r, n, p, q):
     return out
 
 
-def law(rnn, task, N, rng, eps=1e-7, h=1e-5):
-    """Monte Carlo ((first-order law, standard error), (order-truncated law, standard error))."""
+def law(rnn, task, N, rng, eps=1e-7, h=1e-5, bisector=False):
+    """Monte Carlo ((first-order law, standard error), (order-truncated law, standard error)), and
+    with bisector=True also (first-order law with the bisector cap, standard error)."""
     n, r = rnn.n, target_rank(task, rnn.n)
-    first = trunc = var_first = var_trunc = 0.0
+    first = trunc = var_first = var_trunc = bis = var_bis = 0.0
     for p, q in itertools.combinations(range(n), 2):
         nu = np.zeros(n)
         nu[p], nu[q] = 1 / math.sqrt(2), -1 / math.sqrt(2)
@@ -59,10 +60,13 @@ def law(rnn, task, N, rng, eps=1e-7, h=1e-5):
         above = np.where(O > y[:, None], O, np.inf).min(1, initial=np.inf)
         below = np.where(O < y[:, None], O, -np.inf).max(1, initial=-np.inf)
         limit = math.sqrt(2) * np.minimum(above - y, y - below)  # order limit along +-nu
-        wf, wt = np.zeros(N), np.zeros(N)  # per-sample contributions of this tie hyperplane
-        for obj_rank, targets, _ in tie_types(r, n, p, q):
+        up, down = math.sqrt(2) * (above - y), math.sqrt(2) * (y - below)
+        wf, wt, wb = np.zeros(N), np.zeros(N), np.zeros(N)  # per-sample contributions of this tie
+        for obj_rank, targets, tlim in tie_types(r, n, p, q):
             sel = rank == obj_rank
             Xs, lim = X[sel], limit[sel]
+            T, U = (down[sel], up[sel]) if tlim == "down" else (up[sel], down[sel])
+            blim = np.minimum(T / 3, U)
             for s in (+1, -1):
                 t, c = targets[s]
                 L = rnn.forward(Xs)
@@ -74,9 +78,12 @@ def law(rnn, task, N, rng, eps=1e-7, h=1e-5):
                 w = np.where(ok, -delta / np.where(ok, g, 1.0), 0.0)
                 wf[sel] += PHI0 * w
                 wt[sel] += PHI0 * np.minimum(w, lim)
+                wb[sel] += PHI0 * np.minimum(w, blim)
         first, var_first = first + wf.mean(), var_first + wf.var() / N
         trunc, var_trunc = trunc + wt.mean(), var_trunc + wt.var() / N
-    return (first, math.sqrt(var_first)), (trunc, math.sqrt(var_trunc))
+        bis, var_bis = bis + wb.mean(), var_bis + wb.var() / N
+    out = (first, math.sqrt(var_first)), (trunc, math.sqrt(var_trunc))
+    return out + ((bis, math.sqrt(var_bis)),) if bisector else out
 
 
 def decompose(rnn, task, N, rng, steps=64):
