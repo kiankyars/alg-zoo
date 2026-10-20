@@ -13,7 +13,7 @@ import time
 import numpy as np
 from scipy.special import ndtr
 
-from engine import exact_accuracy
+from engine import RNN, exact_accuracy
 from evaluate import load
 from slice import slice_sliver_measure
 from sliver import sliver_error
@@ -35,6 +35,14 @@ for m in (1, 2, 3, 4):  # slivers {zeta + tau nu : zeta in K, 0 <= tau <= w . ze
     se = np.sqrt((s2 / N - mc * mc) / N)
     print(f"sliver measure, m = {m}: {exact:.6e} | Monte Carlo {mc:.6e} ± {se:.1e} (z = {(exact - mc) / se:+.2f})",
           flush=True)
+
+# a toy RNN where h_1 = 0 on a cone, so that every step-2 neuron flips, and every logit gap vanishes,
+# on x_2 = 0 at once (the walk must apply all simultaneous flips before judging the gaps)
+toy = RNN(Wi=np.array([1.0, -1.0]), Wh=np.array([[-20.0, 0.0], [0.0, 0.0]]),
+          Wo=np.array([[0.0, 0.0], [1.0, -0.3], [0.2, 1.0]]), n=3)
+e = sliver_error(toy, "2nd_argmax", cap="bisector", width="exact")[0]
+mc, se = widths(toy, "2nd_argmax", 1 << 16, rng)["bisector"]
+print(f"toy RNN exact sliver: law {e:.6e} | Monte Carlo {mc:.6e} ± {se:.1e} (z = {(e - mc) / se:+.2f})", flush=True)
 
 for spec in sys.argv[1:] or ["M:2,2", "M:3,3", "M:4,3", "M:8,3", "M:32,3", "M:8,4", "M:16,4"]:
     rnn, (task, _) = load(spec)

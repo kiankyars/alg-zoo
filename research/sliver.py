@@ -362,6 +362,13 @@ def _walk(rnn, Q, masks, E, sdir, t, caps, fl, acc, tau0=None, depth=0, cache=No
     a, b, tied, moving, flips = cache[key]
     again = lambda K, **kw: _walk(rnn, K, kw.get("masks", masks), E, sdir, t, caps, fl, acc,
                                   kw.get("tau0", tau0), kw.get("depth", depth), cache, max_depth)
+    if depth > 0 and len(flips):  # neurons that flip at the entry point too: apply them before judging the gaps
+        pending = ~_denoise(flips - tau0, np.maximum(np.linalg.norm(flips, axis=1), np.linalg.norm(tau0))).any(1)
+        if pending.any():  # earliest step first: toggling a neuron changes only later steps' rates
+            new = masks.copy()
+            tt, i = divmod(int(moving[np.argmax(pending)]), rnn.d)
+            new[tt, i] = ~new[tt, i]
+            return again(Q, masks=new, depth=depth + 1)
     others = np.array([j for j in range(len(a)) if j != t])
     F0 = a[others] + b[others, None] * tau0  # every gap at the entry point, as a functional
     F0 = _denoise(F0, np.linalg.norm(a[others], axis=1) + np.abs(b[others]) * np.linalg.norm(tau0))
