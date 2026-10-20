@@ -12,8 +12,9 @@
    of the logit gap within the sliver.
 3. `widths`: the sliver laws with the true (contiguous) width along each normal instead of the
    first-order width, found by a geometric grid and bisection, with the chamber cap and with the
-   bisector cap (each wrong input belongs to the nearer of its target's two walls), and the
-   share of wrong inputs that are not in the sliver of their nearer target wall.
+   bisector cap (each wrong input belongs to the nearer of its target's two walls). A sliver of
+   width w over a tie point has Gaussian measure Phi(w) - 1/2 along its normal (phi(0) w to
+   first order), so with the bisector cap this estimates the exact sliver law.
 
 Usage: python sliver_mc.py <family:d,n> [law|decompose|widths] [log2 samples]
        python sliver_mc.py table [log2 samples]   (decomposition of every model in DECOMPOSE,
@@ -31,6 +32,7 @@ import math
 import sys
 
 import numpy as np
+from scipy.special import ndtr
 
 from engine import target_rank
 from evaluate import load
@@ -155,7 +157,8 @@ def true_widths(rnn, X0, direction, target, cap, ratio=1.02, tau0=1e-9, bisect=4
 
 def widths(rnn, task, N, rng):
     """Monte Carlo of the sliver laws with true widths: dict with the chamber-capped and the
-    bisector-capped sums (each with its standard error)."""
+    bisector-capped sums (each with its standard error). Each sliver counts with its exact
+    Gaussian measure along the normal line, Phi(width) - 1/2, as in sliver.slice_sliver_measure."""
     n, r = rnn.n, target_rank(task, rnn.n)
     out = {}
     for name in ("chamber", "bisector"):
@@ -181,7 +184,7 @@ def widths(rnn, task, N, rng):
                 tgt = np.full(len(Xs), t)
                 w = true_widths(rnn, Xs, s * nu, tgt, caps["chamber"])
                 for k, cap in caps.items():
-                    acc[k][sel] += PHI0 * np.minimum(w, cap)
+                    acc[k][sel] += ndtr(np.minimum(w, cap)) - 0.5
         for k in out:
             out[k][0] += acc[k].mean()
             out[k][1] += acc[k].var() / N
