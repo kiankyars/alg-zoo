@@ -110,13 +110,14 @@ def seeds_table():
         return "(pending)"
     rows = json.load(open("results/sliver_seeds.json"))
     out = ["| model | seed | error | how | first-order law | order-truncated law | bisector law | "
-           "exact sliver law |", "|---|---|---|---|---|---|---|---|"]
+           "exact sliver law | in one / two / no slivers |", "|---|---|---|---|---|---|---|---|---|"]
     for r in sorted(rows, key=lambda r: (r["n"], r["family"] != "M", r["d"], r["seed"])):
         name = ("M" if r["family"] == "M" else "AM") + f"_{{{r['d']},{r['n']}}}"
         how = "exact" if r["method"] == "exact" else f"MC ±{r['error_se'] / r['error']:.1%}"
         rel = lambda k: _rel((r[k] - r["error"]) / r["error"]) if k in r else "-"
+        shares = " / ".join(f"{r[k]:.1%}" for k in ("one", "two", "none")) if "two" in r else "-"
         out.append(f"| `{name}` | {r['seed']} | {r['error']:.3e} | {how} | {rel('first_order')} | "
-                   f"{rel('truncated')} | {rel('bisector')} | {rel('exact_sliver')} |")
+                   f"{rel('truncated')} | {rel('bisector')} | {rel('exact_sliver')} | {shares} |")
     return "\n".join(out)
 
 
