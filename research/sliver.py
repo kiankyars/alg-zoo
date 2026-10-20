@@ -277,7 +277,7 @@ class _Slivers:
         if len(Q.V) < m:  # lower-dimensional (degenerate) cone: measure zero
             return 0.0
         T = triangulate(Q)
-        if T.dtype != np.float64 or len(T) == 0:  # no simplices: degenerate
+        if len(T) == 0:  # no simplices: degenerate
             return 0.0
         self.fl.split += 5 * len(Q.V) * m
         self.T.append(T)

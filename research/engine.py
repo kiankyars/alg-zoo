@@ -221,7 +221,9 @@ def triangulate(cone):
         if cone.I[:, f].sum() >= n - 1
     )
     simps = _pull(list(range(m)), facets, n)
-    return cone.V[np.array(simps)]
+    if not simps:  # numerically lower-dimensional cone (e.g. a sliver of a near-degenerate split)
+        return np.zeros((0, n, n))
+    return cone.V[np.array(simps, dtype=int)]
 
 
 class _PMap(np.ndarray):

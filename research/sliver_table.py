@@ -33,7 +33,7 @@ KNOWN = {(r["family"], r["d"], r["n"]): r for p in glob.glob("results/exact_tabl
          for r in json.load(open(p))}
 WORKERS = int(os.environ.get("WORKERS", 9))
 LAWS = {"sliver": ("none", "first"), "truncated": ("chamber", "first"),  # name -> (cap, width)
-        "bisector": ("bisector", "first"), "exact": ("bisector", "exact")}
+        "bisector": ("bisector", "first"), "exact_sliver": ("bisector", "exact")}
 NO_EXACT = {("M", 32, 5), ("AM", 32, 5)}
 
 
@@ -71,8 +71,8 @@ if __name__ == "__main__":
             r = json.loads(line)
             done[(tuple(r["spec"]), r["law"], tuple(r["pair"]))] = r
     todo = [(s, law, pair) for s in SPECS for law in LAWS for pair in itertools.combinations(range(s[2]), 2)
-            if (s, law, pair) not in done and not (law == "exact" and s in NO_EXACT)]
-    todo.sort(key=lambda j: (j[0][2], j[0][1], j[1] == "exact"))  # smallest models first
+            if (s, law, pair) not in done and not (law == "exact_sliver" and s in NO_EXACT)]
+    todo.sort(key=lambda j: (j[0][2], j[0][1], j[1] == "exact_sliver"))  # smallest models first
     with Pool(WORKERS) as pool, open(jobs_path, "a") as fh:
         for r in pool.imap_unordered(job, todo):
             fh.write(json.dumps(r) + "\n")
@@ -84,7 +84,7 @@ if __name__ == "__main__":
         ex, exact_cost = exact(s)
         row = dict(family=fam, d=d, n=n, exact_error=ex, exact_cost=exact_cost)
         for law in LAWS:
-            if law == "exact" and s in NO_EXACT:
+            if law == "exact_sliver" and s in NO_EXACT:
                 continue
             parts = [done[(s, law, pair)] for pair in itertools.combinations(range(n), 2)]
             e = sum(p["error"] for p in parts)
