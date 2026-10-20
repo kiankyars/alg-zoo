@@ -48,5 +48,25 @@
   "exact_sliver_se": 0.00040987703636275504,
   "chamber_true": 0.44506320452027437,
   "chamber_true_se": 0.0006708614982911915
+ },
+ {
+  "family": "M",
+  "d": 16,
+  "n": 5,
+  "samples_per_tie": 131072,
+  "exact_sliver": 0.007380033469968441,
+  "exact_sliver_se": 1.9252889451838995e-05,
+  "chamber_true": 0.008200708135409036,
+  "chamber_true_se": 2.517053242093899e-05
+ },
+ {
+  "family": "AM",
+  "d": 16,
+  "n": 5,
+  "samples_per_tie": 131072,
+  "exact_sliver": 0.01677665085243195,
+  "exact_sliver_se": 2.360636643777276e-05,
+  "chamber_true": 0.017993268477421262,
+  "chamber_true_se": 2.816468027718541e-05
  }
 ]
