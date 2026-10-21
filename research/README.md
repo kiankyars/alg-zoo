@@ -614,8 +614,8 @@ numerical thresholds, point-by-point agreement on the zoo models and synthetic s
 then a skeptic reproducing each finding) found that when several neurons switch at the
 same point of a line, the walk applied them one at a time and judged the gaps in between. On a
 toy RNN built so that every last-step neuron and every gap vanish together, this ended slivers
-early (z = −4.7 against Monte Carlo; −1.8 after the fix, in `test_sliver.py`). All
-simultaneous switches are now applied first. No zoo model has such a crossing inside a wrong
+early (z = −11.2 against a Monte Carlo estimate with 2²⁰ normal lines per tie; +0.3 after the
+fix; the toy is a check in `test_sliver.py`). All simultaneous switches are now applied first. No zoo model has such a crossing inside a wrong
 stretch, and recomputing every 2- to 4-input model changed none by more than 1.3 × 10⁻¹²
 relative. The review confirmed two smaller issues. The walk raised an error on 2-input models
 whose lines stay wrong to infinity (they have no order caps; such slivers now get infinite
