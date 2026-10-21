@@ -48,37 +48,47 @@ the 432-parameter `M_{16,10}` (`example_2nd_argmax()`, a different checkpoint fr
    cone: with 6.7 × 10⁷ fresh samples, the χ² tests over their 240 root cones give p =
    0.07–0.92. Matching even 10⁻⁹ precision by sampling would take 10¹³–10¹⁷ samples, depending
    on the model's accuracy.
-3. **A mechanistic explanation of the residual error, now including 5-input models: the
-   order-truncated tie-sliver law.** The errors of well-trained models are thin wedges
-   ("slivers") along the tie hyperplanes at which the target switches between two inputs. A
-   first-order formula built from the logit gap on the tie hyperplane reproduces their error
-   rate, once each sliver is cut off where it leaves its **order chamber** (the cone on which
-   the ordering of the inputs, and so the target, is fixed). For all eight `n = 2` models,
-   where it reduces to ARC's `M_{2,2}` explanation, it matches the exact error to within 1.3 ×
-   10⁻⁶ relative (3 × 10⁻¹¹ absolute). It is within 3.4% for every zoo model with `n <= 4`, `d
-   >= 6` and accuracy above 98% (13% without the cut-off). For the four 5-input zoo models with
-   accuracy above 98% it is off by +4% to +19%, where the law without the cut-off was off by
-   +18% to a factor of 5.6. Next to a triple tie a well-trained model can have a large logit
-   gap on the tie hyperplane, and an uncut sliver then reaches far outside the chamber in which
-   it is an error: for `M_{16,5}`, 0.1% of the points of the tie hyperplanes carried 68% of the
-   uncut estimate. A Monte Carlo decomposition shows that the mechanism is the same at 5
-   inputs. For those four models, 90–97% of the wrong inputs lie in exactly one sliver, 3–10%
-   in two overlapping slivers (next to a triple tie) and at most 0.4% in none. What the law
-   leaves out is second order in the sliver width: overlapping slivers are counted twice, and
-   the logit gap bends inside a sliver. This residual is larger for the `d = 16` models, whose
-   errors are 3–4 times larger than at `d = 32`. On all five training seeds of the larger 4-
-   and 5-input models (35 models), the cap brings the law closer to the error every time, and
-   at least 98% of the wrong inputs lie in one or two slivers. The law is less tight on some
-   seeds, though: up to +25% for `M_{16,5}`, and +40% to +49% for the two least accurate seeds
-   of `M_{8,4}` (97.2–97.6% accurate). The law costs 1–2% of the exact computation for 5-input
-   models (1–2 × 10⁷ forward passes).
+3. **A mechanistic account of where the trained models' errors are: the exact tie-sliver
+   law.** The errors of well-trained models are thin wedges ("slivers") along the tie
+   hyperplanes at which the target switches between two inputs. Inside an **order chamber**
+   (the cone on which the ordering of the inputs, and so the target, is fixed) the target has
+   two such walls; give each wrong input to the nearer one. From every point of a wall, follow
+   the normal line through the model's linear regions and measure exactly the stretch on which
+   the model is wrong. The resulting **exact sliver law** is the Gaussian measure of a set of
+   wrong inputs, computed from the weights by cone geometry alone. So it can only fall short of
+   the error, and the shortfall is exactly the wrong inputs that are not reached from their
+   wall. For the eight 2-input models it equals the exact error to within 1.3 × 10⁻⁶ relative,
+   the precision of the reference (there it is ARC's `M_{2,2}` explanation). For every 3- and
+   4-input zoo model with `d >= 5` it accounts for 99.1–100% of the error, except the
+   86%-accurate `M_{6,4}` (97.2%). It accounts for 98.4% of ARC's `M_{4,3}` and 98.8% of the
+   91%-accurate `M_{3,3}`, whose errors a linearised law misses by 74% and 77%. For the four
+   5-input zoo models with accuracy above 98%, a Monte Carlo estimate of it accounts for
+   98.8–99.6% of the error; computing it exactly there would take hundreds of CPU-hours.
+
+   The law also explains why simpler versions fail. The *first-order* law extrapolates the logit
+   gap linearly off the tie hyperplane; the *order-truncated* law also cuts each sliver where it
+   leaves its chamber. That cut matters: next to a triple tie a well-trained model can have a
+   large gap on the tie hyperplane, and for `M_{16,5}` 0.1% of the points of the tie
+   hyperplanes carried 68% of the uncut estimate. The order-truncated law is within 3.4% for
+   every zoo model with `n <= 4`, `d >= 6` and accuracy above 98%, and costs 2–10% of the exact
+   computation for 4-input models, but it is off by +4% to +18% for the accurate 5-input
+   models. Its error splits exactly into three second-order parts: **overlaps** (near a triple
+   tie it counts the slivers of the target's two walls twice), **bending** (the gap is not
+   linear inside a sliver once a neuron switches) and **unattached** errors (missed by the exact
+   law). For the `n <= 4` models with `d >= 6` and accuracy above 98%, each part is at most 4%
+   of the error; for `M_{4,3}` and `M_{5,3}` the bending is −74% and +89%, because their
+   slivers are not thin. For the accurate 5-input models the order-truncated law's excess
+   splits into overlaps (+2% to +15% of the error) and bending (+3% to +11%), with unattached
+   errors of 0.4–1.2%. On all five training seeds of the larger 4- and 5-input models (35
+   models), the exact sliver law is within 2.4% of the error, where the order-truncated law is
+   off by up to +49%.
 
 What is **not** solved: ARC's headline challenge `M_{16,10}`; matching sampling at intermediate
 budgets for 4- and 5-input models, where exact computation costs 10⁵–10⁹ forward passes (the
-sliver law does not help there: it describes trained models, and on noisy models it is off by
-8–50%); among the 3-input models, the others (`M_{3,3}`, `M_{4,3}`, `M_{6,3}`, `M_{8,3}`) and
-the heaviest noise level for `M_{5,3}` and `M_{16,3}`; and an exact second-order sliver law
-(overlaps at triple ties, bending of the gap). See [Limitations](#limitations).
+sliver laws do not help there: they describe trained models, the first-order laws are off by
+8–50% on noisy models, and the exact sliver law costs about as much as the exact error); and,
+among the 3-input models, the others (`M_{3,3}`, `M_{4,3}`, `M_{6,3}`, `M_{8,3}`) and the
+heaviest noise level for `M_{5,3}` and `M_{16,3}`. See [Limitations](#limitations).
 
 ### 1. MSE versus compute (3-input models, held-out noisy-weights test)
 
@@ -181,105 +191,125 @@ Monte Carlo checks of the four largest models.
 | `AM_{32,5}` | 1216 | 0.9955137455 | 4e-12 | 1.01e+09 | 0.995527 | -0.80 |
 <!-- /EXACT_TABLE -->
 
-### 3. The tie-sliver law
+### 3. The tie-sliver laws
 
-Tie-sliver estimates of the error rate (`sliver.py`) against the exact error rate of the trained
-models: the first-order law, and the order-truncated law, whose slivers are cut off at the
-boundary of their order chamber (see [Method](#method)). Both are computed exactly from the
-cone geometry, and both agree with independent Monte Carlo estimates of the same formulas
-(`test_sliver.py`, `sliver_mc.py law`; see [How this was checked](#how-this-was-checked)). The
-last two columns are a Monte Carlo decomposition of the wrong inputs (`sliver_mc.py table`,
-2²² samples). A wrong input lies in the sliver of
-one of its target's walls (the tie hyperplanes bounding its order chamber where the target
-changes) if the model is wrong all along the segment from the input to its foot on that wall.
-The sum over walls of the true slivers is therefore `one + 2 × two`. The law differs from that
-sum only through the bending of the logit gap inside the sliver, so
-`law − exact = bending + two − none` (as fractions of the error). The last column is that
-bending. For `M_{4,3}` and `M_{5,3}` the wrong inputs are still in slivers, but the slivers
-are not thin, and the gap bends so much inside them that the first-order law fails. For
-`M_{3,3}` and the weak 5-input models, 25–69% of the wrong inputs are where two slivers
-overlap.
+Tie-sliver estimates of the error rate of the trained models (`sliver.py`), as relative
+differences from the exact error rate. All four laws are computed from the weights by cone
+geometry (see [Method](#method)):
+
+* **first-order law**: the width of the sliver at a point of the tie hyperplane is the logit
+  gap there divided by the rate at which the gap grows off the hyperplane;
+* **order-truncated law**: the same width, cut off where the normal line leaves the order
+  chamber;
+* **bisector law**: the same width, cut off at the bisector between the target's two walls (a
+  third of the way to the other wall) and at the chamber's other exits, so that the slivers of
+  different walls are disjoint;
+* **exact sliver law**: the bisector cap, with the true length of the wrong stretch along each
+  normal line instead of the linear extrapolation.
+
+The next three columns split the order-truncated law's error exactly,
+`truncated − exact = overlaps + bending − unattached`, with overlaps = truncated − bisector
+law, bending = bisector law − exact sliver law and unattached = exact error − exact sliver law
+(all as fractions of the exact error). For wide slivers, bending also includes the decay of the
+Gaussian density across the sliver, which the first-order laws ignore. Unattached errors cannot be negative, because the exact
+sliver law measures a set of wrong inputs; the tiny negative values for `n = 2` are the
+reference's precision. The last column is an independent Monte Carlo view of the same
+geometry (`sliver_mc.py table`, 2²² samples). A wrong input lies in the sliver of one of its
+target's walls if the model is wrong all along the segment from the input to its foot on that
+wall; "two" means it lies in the slivers of both walls, next to a triple tie. For the 5-input
+models the exact sliver law is a Monte Carlo estimate (marked MC, with its standard error
+relative to the error): true widths found by a grid and bisection on 2¹⁷ normal lines per tie
+hyperplane (`sliver_mc.py widths-table`), which agrees point by point with the exact walk on
+the 3- and 4-input models. Computing it exactly would take hundreds of CPU-hours per model: a
+single root cone of one tie of `M_{16,5}`, out of 120, ran for more than 30 CPU-minutes.
+
+For `M_{4,3}` and `M_{5,3}` the first-order laws fail because the gap bends inside the slivers
+(bending −74% and +89%), but the errors are still slivers: the exact sliver law accounts for
+98.4% and 99.8% of them. For `M_{3,3}` and the weak 5-input models, 25–69% of the wrong inputs
+are where two slivers overlap.
 
 <!-- SLIVER_TABLE -->
-| model | exact error | first-order law | relative difference | order-truncated law | relative difference | wrong inputs in one / two / no slivers | gap bending |
-|---|---|---|---|---|---|---|---|
-| `M_{2,2}` | 7.7431e-05 | 7.7431e-05 | +2.8e-08 | 7.7431e-05 | +2.8e-08 | - | - |
-| `M_{3,2}` | 2.6402e-05 | 2.6402e-05 | +5.1e-08 | 2.6402e-05 | +5.1e-08 | - | - |
-| `M_{4,2}` | 3.8437e-05 | 3.8437e-05 | +2.1e-08 | 3.8437e-05 | +2.1e-08 | - | - |
-| `M_{5,2}` | 2.3139e-05 | 2.3139e-05 | +1.3e-06 | 2.3139e-05 | +1.3e-06 | - | - |
-| `M_{6,2}` | 7.8679e-05 | 7.8679e-05 | +3.1e-08 | 7.8679e-05 | +3.1e-08 | - | - |
-| `M_{8,2}` | 2.2281e-05 | 2.2281e-05 | +5.9e-08 | 2.2281e-05 | +5.9e-08 | - | - |
-| `M_{16,2}` | 2.7321e-05 | 2.7321e-05 | +4.1e-08 | 2.7321e-05 | +4.1e-08 | - | - |
-| `M_{32,2}` | 2.1988e-05 | 2.1988e-05 | +7.2e-08 | 2.1988e-05 | +7.2e-08 | - | - |
-| `M_{3,3}` | 9.1628e-02 | 2.1552e-02 | -76.48% | 2.1552e-02 | -76.48% | 30.9% / 68.8% / 0.3% | -145.1% |
-| `M_{4,3}` | 1.5450e-02 | 7.0544e-03 | -54.34% | 3.9999e-03 | -74.11% | 97.0% / 2.6% / 0.4% | -76.3% |
-| `M_{5,3}` | 8.8381e-04 | 1.7219e-03 | +94.83% | 1.6882e-03 | +91.02% | 97.0% / 3.0% / 0.0% | +88.0% |
-| `M_{6,3}` | 7.7867e-04 | 7.7931e-04 | +0.08% | 7.7896e-04 | +0.04% | 99.9% / 0.1% / 0.0% | -0.0% |
-| `M_{8,3}` | 5.4510e-04 | 6.1569e-04 | +12.95% | 5.4459e-04 | -0.09% | 98.5% / 1.5% / 0.0% | -1.5% |
-| `M_{16,3}` | 4.9185e-04 | 4.8772e-04 | -0.84% | 4.8713e-04 | -0.96% | 99.3% / 0.2% / 0.5% | -0.7% |
-| `M_{32,3}` | 4.5894e-04 | 4.7612e-04 | +3.74% | 4.7432e-04 | +3.35% | 98.5% / 1.3% / 0.3% | +2.4% |
-| `M_{6,4}` | 1.3525e-01 | 2.6462e-01 | +95.66% | 1.2740e-01 | -5.81% | 70.4% / 28.8% / 0.8% | -33.8% |
-| `M_{8,4}` | 1.2540e-02 | 1.4127e-02 | +12.65% | 1.2440e-02 | -0.79% | 88.2% / 11.7% / 0.1% | -12.4% |
-| `M_{16,4}` | 1.6932e-03 | 1.7793e-03 | +5.09% | 1.7131e-03 | +1.17% | 96.6% / 3.3% / 0.1% | -2.1% |
-| `M_{32,4}` | 1.1998e-03 | 1.3373e-03 | +11.46% | 1.2038e-03 | +0.34% | 96.3% / 3.1% / 0.6% | -2.2% |
-| `M_{6,5}` | 2.9714e-01 | 8.9346e-01 | +200.68% | 2.4752e-01 | -16.70% | 61.9% / 37.3% / 0.9% | -53.1% |
-| `M_{8,5}` | 1.1849e-01 | 3.9084e-01 | +229.86% | 9.2101e-02 | -22.27% | 74.7% / 24.8% / 0.5% | -46.5% |
-| `M_{16,5}` | 7.4723e-03 | 2.1148e-02 | +183.01% | 8.8514e-03 | +18.46% | 89.7% / 9.9% / 0.4% | +8.9% |
-| `M_{32,5}` | 2.7041e-03 | 3.2140e-03 | +18.86% | 2.8476e-03 | +5.31% | 96.5% / 3.1% / 0.4% | +2.5% |
-| `AM_{8,5}` | 3.0145e-01 | 4.9695e-01 | +64.85% | 1.5649e-01 | -48.09% | 50.7% / 48.8% / 0.5% | -96.3% |
-| `AM_{16,5}` | 1.6896e-02 | 9.4125e-02 | +457.07% | 1.9704e-02 | +16.62% | 92.9% / 6.7% / 0.4% | +10.3% |
-| `AM_{32,5}` | 4.4863e-03 | 5.2828e-03 | +17.76% | 4.6779e-03 | +4.27% | 95.1% / 4.7% / 0.2% | -0.2% |
+| model | exact error | first-order law | order-truncated law | bisector law | exact sliver law | overlaps | bending | unattached | in one / two / no slivers |
+|---|---|---|---|---|---|---|---|---|---|
+| `M_{2,2}` | 7.7431e-05 | +2.8e-08 | +2.8e-08 | +2.8e-08 | +1.8e-09 | +0.0e+00 | +2.6e-08 | -1.8e-09 | - |
+| `M_{3,2}` | 2.6402e-05 | +5.1e-08 | +5.1e-08 | +5.1e-08 | +4.4e-08 | +0.0e+00 | +7.2e-09 | -4.4e-08 | - |
+| `M_{4,2}` | 3.8437e-05 | +2.1e-08 | +2.1e-08 | +2.1e-08 | +1.5e-08 | +0.0e+00 | +5.8e-09 | -1.5e-08 | - |
+| `M_{5,2}` | 2.3139e-05 | +1.3e-06 | +1.3e-06 | +1.3e-06 | +1.3e-06 | +0.0e+00 | +6.9e-09 | -1.3e-06 | - |
+| `M_{6,2}` | 7.8679e-05 | +3.1e-08 | +3.1e-08 | +3.1e-08 | +3.2e-09 | +0.0e+00 | +2.7e-08 | -3.2e-09 | - |
+| `M_{8,2}` | 2.2281e-05 | +5.9e-08 | +5.9e-08 | +5.9e-08 | +5.5e-08 | +0.0e+00 | +4.0e-09 | -5.5e-08 | - |
+| `M_{16,2}` | 2.7321e-05 | +4.1e-08 | +4.1e-08 | +4.1e-08 | +3.4e-08 | +0.0e+00 | +6.4e-09 | -3.4e-08 | - |
+| `M_{32,2}` | 2.1988e-05 | +7.2e-08 | +7.2e-08 | +7.2e-08 | +6.8e-08 | +0.0e+00 | +4.1e-09 | -6.8e-08 | - |
+| `M_{3,3}` | 9.1628e-02 | -76.48% | -76.48% | -77.07% | -1.20% | +0.59% | -75.87% | +1.20% | 30.9% / 68.8% / 0.3% |
+| `M_{4,3}` | 1.5450e-02 | -54.34% | -74.11% | -75.54% | -1.56% | +1.43% | -73.98% | +1.56% | 97.0% / 2.6% / 0.4% |
+| `M_{5,3}` | 8.8381e-04 | +94.83% | +91.02% | +89.22% | -0.22% | +1.80% | +89.44% | +0.22% | 97.0% / 3.0% / 0.0% |
+| `M_{6,3}` | 7.7867e-04 | +0.08% | +0.04% | +0.02% | -1.1e-05 | +0.02% | +0.02% | +1.1e-05 | 99.9% / 0.1% / 0.0% |
+| `M_{8,3}` | 5.4510e-04 | +12.95% | -0.09% | -1.40% | -0.14% | +1.31% | -1.26% | +0.14% | 98.5% / 1.5% / 0.0% |
+| `M_{16,3}` | 4.9185e-04 | -0.84% | -0.96% | -1.05% | -0.51% | +0.09% | -0.54% | +0.51% | 99.3% / 0.2% / 0.5% |
+| `M_{32,3}` | 4.5894e-04 | +3.74% | +3.35% | +3.13% | -0.76% | +0.22% | +3.90% | +0.76% | 98.5% / 1.3% / 0.3% |
+| `M_{6,4}` | 1.3525e-01 | +95.66% | -5.81% | -22.18% | -2.82% | +16.38% | -19.36% | +2.82% | 70.4% / 28.8% / 0.8% |
+| `M_{8,4}` | 1.2540e-02 | +12.65% | -0.79% | -4.03% | -0.38% | +3.24% | -3.65% | +0.38% | 88.2% / 11.7% / 0.1% |
+| `M_{16,4}` | 1.6932e-03 | +5.09% | +1.17% | -0.17% | -0.63% | +1.34% | +0.46% | +0.63% | 96.6% / 3.3% / 0.1% |
+| `M_{32,4}` | 1.1998e-03 | +11.46% | +0.34% | -1.32% | -0.90% | +1.66% | -0.43% | +0.90% | 96.3% / 3.1% / 0.6% |
+| `M_{6,5}` | 2.9714e-01 | +200.68% | -16.70% | -42.96% | -6.01% (MC ±0.2%) | +26.26% | -36.95% | +6.01% | 61.9% / 37.3% / 0.9% |
+| `M_{8,5}` | 1.1849e-01 | +229.86% | -22.27% | -33.39% | -5.01% (MC ±0.2%) | +11.12% | -28.38% | +5.01% | 74.7% / 24.8% / 0.5% |
+| `M_{16,5}` | 7.4723e-03 | +183.01% | +18.46% | +3.87% | -1.23% (MC ±0.3%) | +14.58% | +5.11% | +1.23% | 89.7% / 9.9% / 0.4% |
+| `M_{32,5}` | 2.7041e-03 | +18.86% | +5.31% | +2.90% | -0.40% (MC ±0.2%) | +2.41% | +3.30% | +0.40% | 96.5% / 3.1% / 0.4% |
+| `AM_{8,5}` | 3.0145e-01 | +64.85% | -48.09% | -60.03% | -6.21% (MC ±0.1%) | +11.94% | -53.82% | +6.21% | 50.7% / 48.8% / 0.5% |
+| `AM_{16,5}` | 1.6896e-02 | +457.07% | +16.62% | +9.99% | -0.71% (MC ±0.1%) | +6.63% | +10.70% | +0.71% | 92.9% / 6.7% / 0.4% |
+| `AM_{32,5}` | 4.4863e-03 | +17.76% | +4.27% | +2.16% | -0.36% (MC ±0.2%) | +2.11% | +2.52% | +0.36% | 95.1% / 4.7% / 0.2% |
 <!-- /SLIVER_TABLE -->
 
 **Other training seeds.** The zoo keeps the best of 5 training seeds. On all five seeds of the
-larger 4- and 5-input models (`sliver_seeds.py`), the order-truncated law is closer to the
-error than the first-order law on all 35 models. On every seed at least 98.4% of the wrong
-inputs lie in one or two slivers. The law's accuracy tracks the model's. It is within 1.6% on
-every seed of `M_{32,4}`, and within 9% on every seed of `M_{16,4}`, `M_{32,5}` and
-`AM_{32,5}`. It is off by up to +17% for `AM_{16,5}`, +25% for `M_{16,5}`, and +40% to +49% for
-the two least accurate seeds of `M_{8,4}` (accuracy 97.2–97.6%). For 4-input models the error
-and the laws are exact. For 5-input models all three are Monte Carlo estimates (2²⁴ samples for
-the error; 2²⁰ points per tie hyperplane for the laws; the `how` column gives the error's
-relative standard error).
+larger 4- and 5-input models (35 models, `sliver_seeds.py`), the exact sliver law is within
+2.4% of the error. It is −0.2% to −2.3% for the 4-input models, where both are exact, and
+−2.2% to +0.5% for the 5-input models, where both are Monte Carlo estimates (the one positive
+value is within its standard error of 0.6%). The order-truncated law is off by up to +25% for
+`M_{16,5}` and by +40% and +49% for the two least accurate seeds of `M_{8,4}` (accuracy
+97.2–97.6%). There most of the excess is overlapping slivers (24 and 38 points of the error; 13%
+and 19% of their wrong inputs lie in two slivers), and the rest is bending. On every seed at
+least 98.4% of the wrong inputs lie in one or two slivers. For 5-input models the error is
+estimated from 2²⁴ samples (the `how` column gives its relative standard error), the
+first-order laws from 2²⁰ points per tie hyperplane and the exact sliver law from 2¹⁵ normal
+lines per tie hyperplane.
 
 <!-- SEEDS_TABLE -->
-| model | seed | error | how | first-order law | order-truncated law | wrong inputs in one / two / no slivers |
-|---|---|---|---|---|---|---|
-| `M_{8,4}` | 0 | 2.384e-02 | exact | +220.08% | +39.82% | 85.7% / 13.5% / 0.8% |
-| `M_{8,4}` | 1 | 1.254e-02 | exact | +12.65% | -0.79% | 87.8% / 12.0% / 0.1% |
-| `M_{8,4}` | 2 | 2.815e-02 | exact | +261.45% | +49.22% | 80.2% / 19.4% / 0.4% |
-| `M_{8,4}` | 3 | 2.329e-02 | exact | +20.22% | +4.35% | 88.5% / 11.4% / 0.2% |
-| `M_{8,4}` | 4 | 1.460e-02 | exact | +97.77% | +12.29% | 86.1% / 13.4% / 0.5% |
-| `M_{16,4}` | 0 | 2.128e-03 | exact | +3.90% | +1.07% | 96.8% / 2.8% / 0.3% |
-| `M_{16,4}` | 1 | 2.273e-03 | exact | +9.35% | +0.78% | 96.6% / 3.2% / 0.2% |
-| `M_{16,4}` | 2 | 2.197e-03 | exact | +26.19% | +9.01% | 96.6% / 3.4% / 0.0% |
-| `M_{16,4}` | 3 | 1.693e-03 | exact | +5.09% | +1.17% | 96.2% / 3.7% / 0.1% |
-| `M_{16,4}` | 4 | 2.723e-03 | exact | +12.83% | +7.71% | 96.2% / 3.6% / 0.2% |
-| `M_{32,4}` | 0 | 1.330e-03 | exact | +2.91% | -0.43% | 97.0% / 2.5% / 0.5% |
-| `M_{32,4}` | 1 | 1.464e-03 | exact | +18.25% | +1.55% | 96.9% / 2.7% / 0.5% |
-| `M_{32,4}` | 2 | 1.200e-03 | exact | +11.46% | +0.34% | 96.5% / 2.9% / 0.6% |
-| `M_{32,4}` | 3 | 1.413e-03 | exact | +2.96% | -0.82% | 96.7% / 2.6% / 0.7% |
-| `M_{32,4}` | 4 | 1.252e-03 | exact | +7.81% | +0.57% | 97.3% / 2.4% / 0.3% |
-| `M_{16,5}` | 0 | 9.846e-03 | MC ±0.2% | +316.05% | -0.26% | 90.2% / 9.7% / 0.1% |
-| `M_{16,5}` | 1 | 9.035e-03 | MC ±0.3% | +135.67% | +24.99% | 89.6% / 10.2% / 0.2% |
-| `M_{16,5}` | 2 | 7.440e-03 | MC ±0.3% | +181.53% | +18.55% | 89.5% / 10.2% / 0.4% |
-| `M_{16,5}` | 3 | 9.754e-03 | MC ±0.2% | +43.13% | +10.67% | 89.8% / 10.1% / 0.1% |
-| `M_{16,5}` | 4 | 1.268e-02 | MC ±0.2% | +24.18% | +2.22% | 85.4% / 14.5% / 0.0% |
-| `M_{32,5}` | 0 | 3.243e-03 | MC ±0.4% | +30.51% | +2.31% | 94.5% / 5.2% / 0.3% |
-| `M_{32,5}` | 1 | 4.772e-03 | MC ±0.4% | +35.78% | +7.58% | 94.0% / 5.8% / 0.2% |
-| `M_{32,5}` | 2 | 4.972e-03 | MC ±0.3% | +18.56% | +3.65% | 94.0% / 5.5% / 0.5% |
-| `M_{32,5}` | 3 | 2.696e-03 | MC ±0.5% | +22.83% | +5.71% | 96.7% / 2.8% / 0.5% |
-| `M_{32,5}` | 4 | 2.746e-03 | MC ±0.5% | +18.13% | +7.12% | 95.3% / 4.6% / 0.1% |
-| `AM_{16,5}` | 0 | 1.688e-02 | MC ±0.2% | +459.24% | +16.73% | 92.9% / 6.7% / 0.3% |
-| `AM_{16,5}` | 1 | 3.278e-02 | MC ±0.1% | +33.53% | +7.30% | 86.9% / 12.1% / 1.0% |
-| `AM_{16,5}` | 2 | 3.190e-02 | MC ±0.1% | +37.01% | +6.27% | 86.8% / 12.5% / 0.7% |
-| `AM_{16,5}` | 3 | 4.243e-02 | MC ±0.1% | +56.56% | +12.70% | 82.9% / 16.3% / 0.8% |
-| `AM_{16,5}` | 4 | 4.687e-02 | MC ±0.1% | +77.74% | +5.10% | 81.9% / 16.5% / 1.6% |
-| `AM_{32,5}` | 0 | 4.665e-03 | MC ±0.4% | +29.17% | +8.25% | 93.5% / 6.0% / 0.6% |
-| `AM_{32,5}` | 1 | 5.855e-03 | MC ±0.3% | +18.32% | +0.10% | 94.2% / 5.4% / 0.5% |
-| `AM_{32,5}` | 2 | 6.845e-03 | MC ±0.3% | +35.76% | +7.27% | 92.3% / 7.1% / 0.7% |
-| `AM_{32,5}` | 3 | 4.490e-03 | MC ±0.4% | +20.96% | +4.10% | 95.1% / 4.7% / 0.2% |
-| `AM_{32,5}` | 4 | 4.730e-03 | MC ±0.4% | +20.48% | +5.81% | 93.9% / 5.7% / 0.4% |
+| model | seed | error | how | first-order law | order-truncated law | bisector law | exact sliver law | in one / two / no slivers |
+|---|---|---|---|---|---|---|---|---|
+| `M_{8,4}` | 0 | 2.384e-02 | exact | +220.08% | +39.82% | +16.01% | -2.14% | 85.7% / 13.5% / 0.8% |
+| `M_{8,4}` | 1 | 1.254e-02 | exact | +12.65% | -0.79% | -4.03% | -0.38% | 87.8% / 12.0% / 0.1% |
+| `M_{8,4}` | 2 | 2.815e-02 | exact | +261.45% | +49.22% | +11.56% | -2.33% | 80.2% / 19.4% / 0.4% |
+| `M_{8,4}` | 3 | 2.329e-02 | exact | +20.22% | +4.35% | -1.27% | -0.75% | 88.5% / 11.4% / 0.2% |
+| `M_{8,4}` | 4 | 1.460e-02 | exact | +97.77% | +12.29% | -1.05% | -1.15% | 86.1% / 13.4% / 0.5% |
+| `M_{16,4}` | 0 | 2.128e-03 | exact | +3.90% | +1.07% | -0.04% | -0.57% | 96.8% / 2.8% / 0.3% |
+| `M_{16,4}` | 1 | 2.273e-03 | exact | +9.35% | +0.78% | -1.51% | -0.33% | 96.6% / 3.2% / 0.2% |
+| `M_{16,4}` | 2 | 2.197e-03 | exact | +26.19% | +9.01% | +5.58% | -0.18% | 96.6% / 3.4% / 0.0% |
+| `M_{16,4}` | 3 | 1.693e-03 | exact | +5.09% | +1.17% | -0.17% | -0.63% | 96.2% / 3.7% / 0.1% |
+| `M_{16,4}` | 4 | 2.723e-03 | exact | +12.83% | +7.71% | +6.39% | -0.48% | 96.2% / 3.6% / 0.2% |
+| `M_{32,4}` | 0 | 1.330e-03 | exact | +2.91% | -0.43% | -1.28% | -0.63% | 97.0% / 2.5% / 0.5% |
+| `M_{32,4}` | 1 | 1.464e-03 | exact | +18.25% | +1.55% | +0.24% | -0.77% | 96.9% / 2.7% / 0.5% |
+| `M_{32,4}` | 2 | 1.200e-03 | exact | +11.46% | +0.34% | -1.32% | -0.90% | 96.5% / 2.9% / 0.6% |
+| `M_{32,4}` | 3 | 1.413e-03 | exact | +2.96% | -0.82% | -1.71% | -0.86% | 96.7% / 2.6% / 0.7% |
+| `M_{32,4}` | 4 | 1.252e-03 | exact | +7.81% | +0.57% | -1.03% | -0.56% | 97.3% / 2.4% / 0.3% |
+| `M_{16,5}` | 0 | 9.846e-03 | MC ±0.2% | +316.05% | -0.26% | -3.97% | -0.26% | 90.2% / 9.7% / 0.1% |
+| `M_{16,5}` | 1 | 9.035e-03 | MC ±0.3% | +135.67% | +24.99% | +6.44% | -0.45% | 89.6% / 10.2% / 0.2% |
+| `M_{16,5}` | 2 | 7.440e-03 | MC ±0.3% | +181.53% | +18.55% | +4.36% | -1.54% | 89.5% / 10.2% / 0.4% |
+| `M_{16,5}` | 3 | 9.754e-03 | MC ±0.2% | +43.13% | +10.67% | +3.84% | -1.11% | 89.8% / 10.1% / 0.1% |
+| `M_{16,5}` | 4 | 1.268e-02 | MC ±0.2% | +24.18% | +2.22% | -4.79% | -0.24% | 85.4% / 14.5% / 0.0% |
+| `M_{32,5}` | 0 | 3.243e-03 | MC ±0.4% | +30.51% | +2.31% | -0.33% | -1.41% | 94.5% / 5.2% / 0.3% |
+| `M_{32,5}` | 1 | 4.772e-03 | MC ±0.4% | +35.78% | +7.58% | +3.63% | -1.03% | 94.0% / 5.8% / 0.2% |
+| `M_{32,5}` | 2 | 4.972e-03 | MC ±0.3% | +18.56% | +3.65% | +0.91% | -0.96% | 94.0% / 5.5% / 0.5% |
+| `M_{32,5}` | 3 | 2.696e-03 | MC ±0.5% | +22.83% | +5.71% | +3.13% | -0.46% | 96.7% / 2.8% / 0.5% |
+| `M_{32,5}` | 4 | 2.746e-03 | MC ±0.5% | +18.13% | +7.12% | +4.54% | +0.53% | 95.3% / 4.6% / 0.1% |
+| `AM_{16,5}` | 0 | 1.688e-02 | MC ±0.2% | +459.24% | +16.73% | +10.20% | -0.60% | 92.9% / 6.7% / 0.3% |
+| `AM_{16,5}` | 1 | 3.278e-02 | MC ±0.1% | +33.53% | +7.30% | -1.23% | -1.80% | 86.9% / 12.1% / 1.0% |
+| `AM_{16,5}` | 2 | 3.190e-02 | MC ±0.1% | +37.01% | +6.27% | -2.05% | -1.90% | 86.8% / 12.5% / 0.7% |
+| `AM_{16,5}` | 3 | 4.243e-02 | MC ±0.1% | +56.56% | +12.70% | -0.54% | -1.42% | 82.9% / 16.3% / 0.8% |
+| `AM_{16,5}` | 4 | 4.687e-02 | MC ±0.1% | +77.74% | +5.10% | -5.82% | -2.18% | 81.9% / 16.5% / 1.6% |
+| `AM_{32,5}` | 0 | 4.665e-03 | MC ±0.4% | +29.17% | +8.25% | +2.32% | -1.14% | 93.5% / 6.0% / 0.6% |
+| `AM_{32,5}` | 1 | 5.855e-03 | MC ±0.3% | +18.32% | +0.10% | -2.30% | -0.82% | 94.2% / 5.4% / 0.5% |
+| `AM_{32,5}` | 2 | 6.845e-03 | MC ±0.3% | +35.76% | +7.27% | +0.84% | -1.04% | 92.3% / 7.1% / 0.7% |
+| `AM_{32,5}` | 3 | 4.490e-03 | MC ±0.4% | +20.96% | +4.10% | +2.04% | -0.85% | 95.1% / 4.7% / 0.2% |
+| `AM_{32,5}` | 4 | 4.730e-03 | MC ±0.4% | +20.48% | +5.81% | +2.77% | -0.62% | 93.9% / 5.7% / 0.4% |
 <!-- /SEEDS_TABLE -->
 
 ## Method
@@ -368,6 +398,38 @@ is 0.003. Those points dominate the uncapped law for 5-input models. The cap cos
 cone splits. What it leaves out is second order in the sliver width: slivers on a target's two
 walls that overlap near a triple tie are counted twice, and the logit gap can bend inside a
 sliver when a neuron switches.
+
+**The exact sliver law.** Both second-order effects can be computed exactly. *Overlaps*: give
+each wrong input to the nearer of its target's two walls. The walls (the target's ties with
+the inputs ranked just above and just below it) meet at 60°, since their normals
+`(e_p − e_q)/√2` and `(e_q − e_r)/√2` have inner product −1/2. So the normal line from one wall
+crosses the bisector a third of the way to the other wall. The **bisector cap** is
+`min(ℓ_target / 3, ℓ_other)`, where `ℓ_target` is the order limit at which the line reaches
+the target's other wall and `ℓ_other` the chamber's other exit. With it the slivers of
+different walls, sides and chambers are disjoint. *Bending*: replace the linear width
+`−Δ/g` by the true one. Along the normal line `ζ + τν` from a piece `Q` of the tie hyperplane,
+every logit gap and pre-activation is linear in `(ζ, τ)` within the linear region the line is
+in. So the first neuron flip, the point where the target wins and the caps are each at a
+`τ` that is a linear functional of `ζ`. `Q` is split exactly, along hyperplanes of the tie
+hyperplane, until the first of these events is the same on all of it. A linear inequality holds
+on a cone if and only if it holds at its rays. If a cap or the target's win comes first, the
+sliver ends there; if a neuron flips first, the walk continues in the neighbouring region from
+the crossing. Exact logit ties go to the lowest index, as in the exact engine and `np.argmax`.
+The result is a set of cones `C` of the tie hyperplane, each with a width `w·ζ` linear in `ζ`.
+The Gaussian measure of the sliver `{ζ + τν : ζ ∈ C, 0 ≤ τ ≤ w·ζ}` follows from polar
+coordinates in `ζ`: over each ray it is a 2-D wedge, so
+
+    γ(sliver) = c_m ∫_{flat slice of C} Θ_m(w·y/|y|) |y|^{−m} dA,   Θ_m(a) = ∫_0^{atan a} cos^{m−1}t dt,
+
+with `m = n − 1` and `c_m = (2π)^{−(m+1)/2} 2^{(m−1)/2} Γ((m+1)/2)`. The integral is computed by
+slice cubature as above (`slice.slice_sliver_measure`). For thin slivers `Θ_m(a) ≈ a` and it
+reduces to the first-order formula. The **exact sliver law** sums these measures. Every point
+it counts is a wrong input, and no point is counted twice, so it is at most the error. The
+difference, the *unattached* errors, consists of the wrong inputs that are not joined to their
+nearer wall by a segment along its normal, inside the chamber, on which the model is wrong
+throughout. The exact sliver law costs about as much as
+the exact error (0.3–24 times as much for 4-input models), so it explains the error rather
+than estimating it more cheaply.
 
 **The anytime estimator (compute knob).** Exact refinement costs about 10³ forward-pass
 equivalents for 3-input models. For smaller budgets there is a fixed ladder of cheaper rungs:
@@ -499,6 +561,63 @@ piece is now triangulated and integrated by slice cubature (`slice.slice_linear_
 changed `M_{32,5}`'s truncated law from +5.6% to +5.3%, and no other value at the precision
 shown.
 
+**The exact sliver law.** Its two parts were checked separately against Monte Carlo. The sliver
+measure (`slice.slice_sliver_measure`) agrees with direct sampling of random slivers in 3 to 5
+dimensions (`test_sliver.py`). The walks agree with an independent estimate that knows nothing
+of linear regions (`sliver_mc.py widths`). That estimate samples points of each tie hyperplane,
+finds the true width `w` along each normal line by a grid of forward passes and bisection, with
+`np.argmax`, and averages the stretch's Gaussian measure `Φ(w) − 1/2`. On the 3- and 4-input
+models of `test_sliver.py` the exact sliver law agrees with it within |z| ≤ 2.0, and the
+sliver measure with direct sampling within |z| ≤ 2.3. The code was then reviewed adversarially, as
+above: review agents with different lenses (the mathematics, the code, numerics) and skeptic
+agents that tried to refute each finding. Four findings were confirmed and fixed:
+
+1. **Tie convention.** On the small models the final hidden state can be entirely zero, so all
+   logits tie at 0. The exact engine and `np.argmax` then predict the first class, but the walk
+   resolved such ties differently. Fixing this moved `M_{3,3}` from −72% to −9.5% and
+   `M_{4,3}` from −12% to −1.6%, and no model with `d >= 5` by more than 0.03% of its error.
+2. **A neuron flip at the moment the target wins.** There the gaps can vanish together, and the
+   walk ended the sliver where the target only tied; it now continues into the next region.
+3. **Unbounded walks.** Without a cap the walk did not stop on lines where the target never
+   wins. It now raises an error only if no event at all remains (the reported laws are all
+   capped).
+4. **Wide slivers.** The cubature of `Θ_m` also bisects cones across which `w·u` varies a lot,
+   not only cones that are wide.
+
+Three findings were refuted: simultaneous flips of two neurons (handled by the event order),
+the recursion depth (bounded by the number of regions a line crosses) and overflow of `Θ_m`.
+
+Two more problems were found afterwards, by testing rather than review. First,
+`test_sliver.py` put the exact sliver law of `M_{3,3}` 13.7 standard errors below its Monte
+Carlo estimate. A point-by-point comparison of the widths located the cause. Lines that enter
+the dead region (hidden state 0, all logits 0, class 0 predicted) cross it where a logit gap
+vanishes and the last active neuron switches off. These are the same functional in exact
+arithmetic, but the walk compared events by normalising their difference by its own norm, so
+rounding noise of order 10⁻¹⁷ got a sign of order one, and the walk took a spurious win and
+ended the sliver. Differences below 10⁻⁹ of the functionals' size are now treated as zero.
+Measured on the zoo models, the noise is at most 10⁻¹⁴ of that size and genuine differences
+are at least 10⁻⁷ of it. The fix moved `M_{3,3}` from −9.5% to −1.2%, and `M_{4,3}` and
+`M_{6,4}` by 0.03% and 0.01% of their errors. All other models were unchanged. Second, an
+adversarial review of that fix (four reviewers, on the semantics of the comparisons, their
+numerical thresholds, point-by-point agreement on the zoo models and synthetic stress models,
+then a skeptic reproducing each finding) found that when several neurons switch at the
+same point of a line, the walk applied them one at a time and judged the gaps in between. On a
+toy RNN built so that every last-step neuron and every gap vanish together, this ended slivers
+early (z = −4.7 against Monte Carlo; −1.8 after the fix, in `test_sliver.py`). All
+simultaneous switches are now applied first. No zoo model has such a crossing inside a wrong
+stretch, and recomputing every 2- to 4-input model changed none by more than 1.3 × 10⁻¹²
+relative. The review confirmed two smaller issues, neither affecting a zoo
+model: the walk raised an error on 2-input models whose lines stay wrong to infinity (they have no
+order caps; such slivers now get infinite width), and the Monte Carlo reference itself steps
+over correct stretches shorter than its 2% grid and breaks exact logit ties by rounding (rare:
+an upward bias of about 0.07 standard errors on `AM_{8,5}`, none found on the other models).
+It refuted two others: the 10⁻⁹ threshold against an ill-conditioned flip (`M_{8,4}` is
+bit-identical for any threshold from 10⁻¹³ to 10⁻⁶) and the tie test's dynamic range (the zoo
+models' output rows differ in size by at most a factor of 19).
+For `n = 2` the exact sliver law is up to 1.3 × 10⁻⁶ relative (3 × 10⁻¹¹ absolute) above the
+exact error, as are the first-order laws. This is the precision of the closed-form arcsine
+measures of the reference, not an excess of the law.
+
 ## Limitations
 
 * **`M_{16,10}` is still open.** The exact engine refines every linear region, and their number
@@ -520,13 +639,15 @@ shown.
   For `M_{3,3}` and `M_{4,3}` the errors are not sliver-dominated. For `M_{6,3}` and `M_{8,3}`
   we do not yet know why the mid-range rungs fail. ARC's own estimates for `M_{4,3}` "roughly
   match the computational efficiency of sampling"; ours do not at intermediate budgets.
-* **The sliver law explains trained models, not noisy ones.** It describes the errors of the
-  zoo models as trained. Under the weight noise of the evaluation protocol the 4-input errors
-  grow 6–40 times (`M_{16,4}`: from 0.17% to 1–7% at σ = 0.002–0.01), and on 9 such noisy
-  models the order-truncated law is off by +8% to +50%. So it is not an estimator that competes
-  with sampling under that protocol. Its remaining error on trained models is second order and
-  is measured above by Monte Carlo, not computed. An exact second-order law (overlapping slivers
-  at triple ties, bending of the gap) is still to be written.
+* **The sliver laws explain trained models; they do not estimate noisy ones cheaply.** They
+  describe the errors of the zoo models as trained. Under the weight noise of the evaluation
+  protocol the 4-input errors grow 6–40 times (`M_{16,4}`: from 0.17% to 1–7% at σ =
+  0.002–0.01), and on 9 such noisy models the order-truncated law is off by +8% to +50%. The
+  exact sliver law removes the second-order error but costs about as much as the exact
+  computation for 4-input models (0.3–24 times as much), and far more for 5-input models, where
+  it is only estimated by Monte Carlo. So neither competes with sampling under that protocol. It also leaves the unattached errors unexplained: under 1% of the error for the
+  accurate models, 1.2–2.8% for `M_{3,3}`, `M_{4,3}` and `M_{6,4}`, and 5–6% for the weak
+  5-input models.
 * **The estimator rule was chosen on a development set.** The finishing rule was chosen among
   three candidates on development seeds 32–95, then frozen; all reported numbers come from
   fresh seeds 1000–1199. The noise model, its scale and the number of models are our own
@@ -542,9 +663,10 @@ shown.
 pip install -e .            # from the repo root; plus numpy, scipy, matplotlib
 cd research
 python test_engine.py M2,2 M4,3 M8,4          # exact engine vs Monte Carlo
-python test_sliver.py M:8,3 M:16,4               # sliver laws vs their Monte Carlo estimates
+python test_sliver.py M:8,3 M:16,4               # sliver measure and laws vs their Monte Carlo estimates
 ./run_tables.sh                                 # exact accuracies (n <= 5), tie-sliver laws, per-root MC
 python sliver_mc.py table                        # where the wrong inputs lie (one / two / no slivers)
+python sliver_mc.py widths-table                 # Monte Carlo exact sliver law where it is not computed
 python sliver_seeds.py                           # sliver laws on training seeds 0-4
 ./run_dev.sh                                     # development set used to choose the finishing rule
 ./run_test.sh                                    # held-out test: 7 models x 3 noise levels x 200 models
