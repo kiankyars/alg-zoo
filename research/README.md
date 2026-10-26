@@ -35,6 +35,24 @@ the 432-parameter `M_{16,10}` (`example_2nd_argmax()`, a different checkpoint fr
    number of inputs rather than on the number of parameters. From about 0.8–1.9 × 10³ forward
    passes, depending on the model, the estimate is exact (MSE ≈ 0). Argmedian with `n = 3` is
    the same task, and the zoo's argmedian `n = 3` models have identical weights.
+
+   **A second ladder, pre-registered and tested on fresh models, beats sampling in 14 of the 21
+   3-input cells, including ARC's `M_{4,3}`.** The cells the first ladder lost were diagnosed on
+   separate development seeds: a mid-range failure (cones whose first conflict is at the last
+   step, linearised at a point inside their thin wrong region), linearising a cone with two
+   target walls at one wall's activation pattern, and cheap rungs that pay for work whose result
+   is never used. A second ladder (`lean.py`) fixes these, was frozen with a written
+   pre-registration (`PREREG_lean.md`), and was tested once on 200 fresh noisy models per cell
+   (noise seeds 7000-7199), together with the first ladder on the same models and with corrected,
+   higher compute charges for both. After a Holm correction over the 21 cells, it has lower MSE
+   than sampling at every budget for `M_{5,3}`, `M_{6,3}`, `M_{8,3}` and `M_{32,3}` at all three
+   noise levels, `M_{16,3}` at σ = 0.002 and 0.005, and **`M_{4,3}` at σ = 0.002 (worst ratio
+   0.75 [0.73, 0.78])**, where ARC's estimates "roughly match" sampling. The first ladder does so
+   in 6 cells, and the second has the smaller worst ratio in 20 of 21. `M_{32,3}` at σ = 0.01,
+   which was marginal (0.86), is now 0.41 [0.33, 0.49]; the first ladder replicates its earlier
+   value there on the fresh models, 0.87 [0.77, 0.97], again marginal (p = 0.015, not significant
+   after the Holm correction). Section [1b](#1b-a-second-ladder-for-3-input-models-pre-registered-held-out-test)
+   has the table.
 2. **Exact accuracies, no sampling.** The same machinery computes the exact accuracy of all 37
    distinct AlgZoo RNN classifiers (2nd argmax and argmedian) with at most 5 inputs, up to the
    1,216-parameter `M_{32,5}` and `AM_{32,5}`. Run time grows with the number of linear regions:
@@ -90,9 +108,10 @@ What is **not** solved: ARC's headline challenge `M_{16,10}`; matching sampling 
 budgets for 4- and 5-input models, where exact computation costs 10⁵–10⁹ forward passes (the
 sliver laws do not help there: they describe trained models, the order-truncated law is off by
 +8% to +50% on 9 noisy 4-input models, and the exact sliver law costs 0.3–24 times as much as
-exact computation for 4-input models and far more for 5-input models); and,
-among the 3-input models, the others (`M_{3,3}`, `M_{4,3}`, `M_{6,3}`, `M_{8,3}`) and the
-heaviest noise level for `M_{5,3}` and `M_{16,3}`. See [Limitations](#limitations).
+exact computation for 4-input models and far more for 5-input models); and, among the 3-input
+models, `M_{3,3}` at every noise level, `M_{4,3}` at σ = 0.005 and 0.01, and `M_{16,3}` at
+σ = 0.01. For `M_{3,3}` and for `M_{4,3}` at σ = 0.01 no ladder that starts from the prior
+"accuracy 1" can win with a first rung as expensive as ours. See [Limitations](#limitations).
 
 ### 1. MSE versus compute (3-input models, held-out noisy-weights test)
 
@@ -137,10 +156,89 @@ ratio peaks just before that budget, when the next rung becomes affordable. The 
 
 The ladder's weak point is its cheap rungs (`roots_k`, which linearise whole root cones) and,
 for some of the other models, its mid-range rungs. A forward pass of `M_{3,3}`–`M_{8,3}` costs
-only 70–350 flops, so the geometric overhead is relatively expensive. For `M_{3,3}` and
-`M_{4,3}` the errors are not sliver-dominated (the tie-sliver law is off by −76% and −54%).
-For `M_{6,3}` and `M_{8,3}`, whose errors are sliver-dominated, we do not yet understand why the
-mid-range rungs fail.
+only 70–350 flops, so the geometric overhead is relatively expensive. Section 1b explains both
+failures and tests a second ladder that fixes most of them. (This table was computed with the
+original accounting, which did not charge hyperplane tests that leave a cone on one side and
+some of a split's bookkeeping; the corrected charges raise our costs by 2–15%, and section 1b
+uses them for both ladders.)
+
+### 1b. A second ladder for 3-input models (pre-registered held-out test)
+
+The failures of the first ladder were diagnosed on development noise seeds only (5000-5131 and
+a few more ranges listed in `PREREG_lean.md`; the cells were chosen from the failures of the
+test above, which is therefore not used to evaluate the second ladder). They have three causes:
+
+* **Mid-range rungs (`M_{6,3}` at every noise level, `M_{8,3}` at σ = 0.002).** The estimate
+  *over*states the error. A few cones per model (measure 0.003–0.01, just below the size at
+  which the guard fires) have their first conflict at the last step and a tie face. Their true
+  error is a thin tie sliver of about 10⁻⁴, but the tie point lies inside that sliver, so the
+  linearisation extends its linear map over the whole cone: e.g. an estimate of 6.8 × 10⁻³
+  against a true 1.3 × 10⁻⁴. Zeroing those cones removes 99% of the mid-range MSE.
+* **Cheap rungs.** They *under*state the error: the prior on unexamined root cones, and
+  linearisation at one tie face only. Every root cone has two target walls (to the inputs
+  ranked just above and just below the target), so the second wall's sliver was estimated
+  with the first wall's activation pattern.
+* **Cost.** Part of each rung paid for work whose result is never used.
+
+The second ladder (`lean.py`, rule `lean` in `evaluate.py`) changes exactly these:
+
+* a cone whose first conflict is at the last step and whose linearisation claims more than 10%
+  of it is wrong is finished exactly (at the last step every piece of an exact split is a
+  linear region);
+* a cone with both target tie faces is split at their bisector, and each half is linearised
+  next to its own face;
+* the `roots_k` rungs examine root cones in decreasing order of their closed-form measure;
+* the same estimates with fewer operations: cone measures in 3-D by Girard's theorem (an
+  angle per extreme ray), linearisation from the point's pre-activations only, and step 0 of a
+  root from the sign of `x_0`.
+
+It was frozen and pre-registered (`PREREG_lean.md`, commit `270fe34`) after an adversarial
+review of the code, its flop charges and the protocol. The review found a bug that would have
+made every cell report an infinite ratio (the exact rung was scored at its own value, which
+differs from the truth by rounding), and undercharges on both ladders, all fixed before the
+freeze. The test ran both ladders on the same 4,200 noisy models (`run_test_lean.sh`): 21 cells,
+noise seeds 7000–7199, which no 3-input model had used. The truth was validated by plain Monte
+Carlo (2¹⁹ samples per model) in all 21 cells: χ² p-values 0.01–0.99, max |z| 3.4 over 4,200
+models. Below, the worst fair ratio of each ladder, a paired percentile bootstrap (10,000
+replicates; the same resampled models for both ladders) and the one-sided p-value
+p = P*(ratio ≥ 1). **Bold** means rejected by Holm at level 0.05 over the 21 cells: the ladder
+has lower MSE than sampling at every budget. The last columns compare the ladders on the same
+models (lean better in every cell but the first, Holm-significant in 20).
+
+<!-- LEAN_TABLE -->
+| model | σ | mean accuracy | lean | 90% CI | p | lguard | 90% CI | p | lean / lguard | 90% CI |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `M_{3,3}` | 0.002 | 0.8423 | 20.19 | [19.38, 20.98] | 1.0000 | 17.04 | [16.18, 17.90] | 1.0000 | 1.18 | [1.16, 1.21] |
+| `M_{3,3}` | 0.005 | 0.7948 | 20.72 | [19.70, 21.76] | 1.0000 | 22.91 | [21.66, 24.25] | 1.0000 | 0.90 | [0.86, 0.95] |
+| `M_{3,3}` | 0.01 | 0.7219 | 23.52 | [22.26, 24.81] | 1.0000 | 32.42 | [30.54, 35.00] | 1.0000 | 0.73 | [0.70, 0.74] |
+| `M_{4,3}` | 0.002 | 0.9777 | **0.75** | [0.73, 0.78] | <0.0001 | 1.83 | [1.78, 1.88] | 1.0000 | 0.41 | [0.40, 0.42] |
+| `M_{4,3}` | 0.005 | 0.9624 | 1.38 | [1.29, 1.47] | 1.0000 | 3.06 | [2.91, 3.21] | 1.0000 | 0.45 | [0.43, 0.46] |
+| `M_{4,3}` | 0.01 | 0.9342 | 3.74 | [3.36, 4.13] | 1.0000 | 6.10 | [5.68, 6.52] | 1.0000 | 0.61 | [0.57, 0.65] |
+| `M_{5,3}` | 0.002 | 0.9950 | **0.12** | [0.12, 0.13] | <0.0001 | **0.30** | [0.28, 0.31] | <0.0001 | 0.42 | [0.39, 0.45] |
+| `M_{5,3}` | 0.005 | 0.9876 | **0.30** | [0.29, 0.33] | <0.0001 | **0.73** | [0.67, 0.78] | <0.0001 | 0.42 | [0.39, 0.47] |
+| `M_{5,3}` | 0.01 | 0.9740 | **0.65** | [0.61, 0.69] | <0.0001 | 1.44 | [1.34, 1.56] | 1.0000 | 0.45 | [0.42, 0.48] |
+| `M_{6,3}` | 0.002 | 0.9977 | **0.68** | [0.65, 0.72] | <0.0001 | 10.22 | [8.34, 12.21] | 1.0000 | 0.07 | [0.06, 0.08] |
+| `M_{6,3}` | 0.005 | 0.9944 | **0.24** | [0.23, 0.25] | <0.0001 | 3.39 | [2.69, 4.16] | 1.0000 | 0.07 | [0.06, 0.09] |
+| `M_{6,3}` | 0.01 | 0.9887 | **0.20** | [0.19, 0.21] | <0.0001 | 1.77 | [1.40, 2.18] | 0.9998 | 0.11 | [0.09, 0.15] |
+| `M_{8,3}` | 0.002 | 0.9889 | **0.47** | [0.45, 0.50] | <0.0001 | 1.22 | [0.95, 1.54] | 0.9067 | 0.39 | [0.31, 0.50] |
+| `M_{8,3}` | 0.005 | 0.9723 | **0.39** | [0.37, 0.42] | <0.0001 | 1.19 | [1.14, 1.24] | 1.0000 | 0.33 | [0.32, 0.34] |
+| `M_{8,3}` | 0.01 | 0.9407 | **0.91** | [0.88, 0.97] | 0.0040 | 3.22 | [3.02, 3.42] | 1.0000 | 0.28 | [0.27, 0.30] |
+| `M_{16,3}` | 0.002 | 0.9879 | **0.09** | [0.09, 0.10] | <0.0001 | **0.25** | [0.24, 0.27] | <0.0001 | 0.36 | [0.35, 0.38] |
+| `M_{16,3}` | 0.005 | 0.9693 | **0.27** | [0.25, 0.30] | <0.0001 | **0.77** | [0.71, 0.83] | <0.0001 | 0.35 | [0.33, 0.39] |
+| `M_{16,3}` | 0.01 | 0.9355 | 1.16 | [0.97, 1.37] | 0.9152 | 1.96 | [1.84, 2.09] | 1.0000 | 0.59 | [0.50, 0.69] |
+| `M_{32,3}` | 0.002 | 0.9940 | **0.10** | [0.08, 0.12] | <0.0001 | **0.14** | [0.12, 0.16] | <0.0001 | 0.75 | [0.58, 0.94] |
+| `M_{32,3}` | 0.005 | 0.9845 | **0.08** | [0.08, 0.10] | <0.0001 | **0.35** | [0.30, 0.40] | <0.0001 | 0.22 | [0.20, 0.29] |
+| `M_{32,3}` | 0.01 | 0.9673 | **0.41** | [0.33, 0.49] | <0.0001 | 0.87 | [0.77, 0.97] | 0.0154 | 0.47 | [0.40, 0.55] |
+<!-- /LEAN_TABLE -->
+
+As pre-registered, three cells were expected to fail, and do. For `M_{3,3}` (84% accurate at
+σ = 0.002) and `M_{4,3}` at σ = 0.01 the prior is the problem, not the rungs: with "accuracy 1"
+as rung 0, the worst ratio is at least MSE(const) × cost(first rung) / var, where var / MSE(const)
+is 2.4–5.1 forward passes for `M_{3,3}` and 12.6 for `M_{4,3}` at σ = 0.01, but the first root
+cone costs 19–30. That floor is 5.5–12.6 for `M_{3,3}` and 1.5 for `M_{4,3}` at σ = 0.01. It is
+below 1 for the two other failures, `M_{4,3}` at σ = 0.005 (floor 0.78, measured 1.38) and
+`M_{16,3}` at σ = 0.01 (floor 0.39, measured 1.16), so those need better rungs, not just
+cheaper ones.
 
 ### 2. Exact accuracies of ≤ 5-input models
 
@@ -490,7 +588,12 @@ flops, comparisons and reductions as 1, transcendental functions as 20. Sampling
 inputs and computing targets are not charged to sampling, which favours sampling. Our side is
 charged for every necessary operation: pre-activations and their norms (cached per step and
 shared by child cones), sign tests, splits, triangulation bookkeeping (charged at the cost
-measured by tracing), cuts and Gaussian measures, root set-up, and the priority queue.
+measured by tracing), cuts and Gaussian measures, root set-up, and the priority queue. A
+tracing audit before the second ladder's test (section 1b) found that the hyperplane test of a
+split was not charged when the cone lay entirely on one side, nor the normalisation, masks and
+new-ray norms of a split. Both are now charged (`engine.split`), which raises our costs by
+2–15%. The first test (section 1, seeds 1000–1199) and the exact table's costs predate this;
+section 1b uses the corrected charges for both ladders.
 
 **Evaluation protocol.** ARC suggests perturbing the weights enough to change accuracy
 significantly and averaging the squared error over the noisy models. We instantiate this by
@@ -652,14 +755,15 @@ measures of the reference, not an excess of the law.
   magnitude. Below it our approximate rungs were not competitive: in exploratory runs on
   `M_{16,4}`, not included in `results/`, they were 10–500× worse than sampling in MSE. In 4-D
   the unresolved cones are large, and linearising them is unreliable.
-* **Small 3-input models and the heaviest noise.** The fair ladder loses to sampling over a
-  window of budgets for `M_{3,3}`, `M_{4,3}`, `M_{6,3}` and `M_{8,3}` at every noise level, and
-  for `M_{5,3}` and `M_{16,3}` at σ = 0.01 (see the table). It always wins once exact
-  computation is affordable, at about 10³ forward passes. For these models a forward pass is
-  cheap (70–1,200 flops), so the geometric overhead of the cheap rungs is relatively expensive.
-  For `M_{3,3}` and `M_{4,3}` the errors are not sliver-dominated. For `M_{6,3}` and `M_{8,3}`
-  we do not yet know why the mid-range rungs fail. ARC's own estimates for `M_{4,3}` "roughly
-  match the computational efficiency of sampling"; ours do not at intermediate budgets.
+* **Small 3-input models and the heaviest noise.** The second ladder (section 1b) still loses
+  to sampling over a window of budgets for `M_{3,3}` at every noise level, `M_{4,3}` at
+  σ = 0.005 and 0.01, and `M_{16,3}` at σ = 0.01. It always wins once exact computation is
+  affordable, at about 10³ forward passes. For `M_{3,3}` and `M_{4,3}` at σ = 0.01 a ladder that
+  starts from the prior "accuracy 1" cannot win unless its first rung costs a few forward passes
+  (2.4–12.6), far below one root cone's analysis (19–30); a better start would have to estimate
+  the error without that prior, cheaply. For the other two cells the floor is below 1 and the
+  rungs themselves would have to improve. The second ladder was designed after seeing the first
+  test's failures, on development seeds; its own test is the pre-registered one on fresh seeds.
 * **The sliver laws explain trained models; they do not estimate noisy ones cheaply.** They
   describe the errors of the zoo models as trained. Under the weight noise of the evaluation
   protocol the 4-input errors grow 6–40 times (`M_{16,4}`: from 0.17% to 1–7% at σ =
@@ -693,6 +797,8 @@ python sliver_seeds.py                           # sliver laws on training seeds
 ./run_dev.sh                                     # development set used to choose the finishing rule
 ./run_test.sh                                    # held-out test: 7 models x 3 noise levels x 200 models
 python summarize.py results/test/*.jsonl         # worst-case ratios with bootstrap intervals
+./run_test_lean.sh                               # pre-registered test of the second ladder (PREREG_lean.md):
+                                                 #   both ladders, 21 cells x 200 fresh models, MC check, analyze_test.py
 python mc_validate.py results/test/M_{5,16,32}_3_*.jsonl  # independent Monte Carlo check of ground truth
 python plot.py 32 16                             # figures
 python make_tables.py --readme                   # refill the tables in this README
@@ -703,6 +809,8 @@ All runs are resumable (results are appended per model, and per root cone in
 and ladder), `exact_parallel.py` (the exact estimator over root cones in a process pool),
 `orthant.py` (orthant probabilities), `slice.py` (slice cubature), `sliver.py` (tie-sliver
 laws), `sliver_mc.py` (Monte Carlo checks of the sliver laws and the decomposition of the wrong
-inputs), `sliver_seeds.py` (the laws on other training seeds), `evaluate.py` (noisy-ensemble protocol), `summarize.py`, `plot.py`, `make_tables.py`,
+inputs), `sliver_seeds.py` (the laws on other training seeds), `lean.py` (the second 3-input
+ladder), `evaluate.py` (noisy-ensemble protocol), `summarize.py`, `analyze_test.py` (paired
+bootstrap and Holm analysis of the second ladder's test), `plot.py`, `make_tables.py`,
 `exact_table.py`, `sliver_table.py`, `mc_validate.py`, `mc_roots.py` (per-root Monte Carlo
 check), `test_engine.py`, `test_sliver.py`.

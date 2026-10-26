@@ -133,10 +133,11 @@ def lean_table(path="results/test7000/analysis.json"):
     for r in rows:
         _, d, n, sigma = r["cell"].split("_")
         b = lambda x, h: f"**{x:.2f}**" if h else f"{x:.2f}"
+        pv = lambda x: "<0.0001" if x == 0 else f"{x:.4f}"  # share of 10,000 replicates
         out.append(f"| `M_{{{d},{n}}}` | {sigma} | {r['mean_acc']:.4f} | {b(r['lean'], r['holm_lean'])} | "
-                   f"[{r['lean_ci'][0]:.2f}, {r['lean_ci'][1]:.2f}] | {r['p_lean']:.4f} | "
+                   f"[{r['lean_ci'][0]:.2f}, {r['lean_ci'][1]:.2f}] | {pv(r['p_lean'])} | "
                    f"{b(r['lguard'], r['holm_lguard'])} | [{r['lguard_ci'][0]:.2f}, {r['lguard_ci'][1]:.2f}] | "
-                   f"{r['p_lguard']:.4f} | {math.exp(r['log_ratio']):.2f} | "
+                   f"{pv(r['p_lguard'])} | {math.exp(r['log_ratio']):.2f} | "
                    f"[{math.exp(r['log_ratio_ci'][0]):.2f}, {math.exp(r['log_ratio_ci'][1]):.2f}] |")
     return "\n".join(out)
 
