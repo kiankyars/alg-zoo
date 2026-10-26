@@ -1,6 +1,8 @@
-"""A second finishing rule and ladder for 3-input models ("lean"), designed on development seeds
-5000-5131 after the held-out test of the lguard ladder (see README, "A second ladder for 3-input
-models"). It changes three things relative to engine.anytime_ladder with rule="lguard":
+"""A second finishing rule and ladder for 3-input models ("lean"), designed after the held-out test
+of the lguard ladder, on the cells that failed it, using development noise seeds only (5000-5131,
+5200-5223, 5600-5799, 5900-5915, 5960-6007); see README, "A second ladder for 3-input models",
+and PREREG_lean.md for its held-out test. It changes three things relative to
+engine.anytime_ladder with rule="lguard":
 
 * Exact finishing of implausible last-step conflicts. A cone whose first conflict is at the last
   step and whose tie linearisation claims more than tau of it is wrong is finished exactly: at
@@ -25,8 +27,9 @@ and three pieces of bookkeeping that give the same estimates with fewer charged 
 * advance_lean: at step 0 of a root every pre-activation is w_i x_0 and the sign of x_0 is fixed
   on the root, so the first activation pattern is known without evaluating rays.
 
-The exact rung is exact refinement with the same bookkeeping (exact_accuracy_lean); it agrees with
-engine.exact_accuracy to about 1e-10.
+The exact rung is exact refinement with the same bookkeeping (exact_accuracy_lean). It agrees with
+engine.exact_accuracy to about 1e-10, and to 3e-9 on M_{3,3}, where Girard's formula is the more
+accurate of the two (the engine's arcsine closed form loses ~1e-9 on very thin simplices).
 """
 
 import heapq
@@ -77,7 +80,7 @@ def resolve_lean(rnn, t, H, P, point, fl):
     d, n = rnn.d, rnn.n
     while True:
         at = point[: t + 1] @ P[:, : t + 1].T > 0
-        fl.rnn += 2 * (t + 1) * d + d * (t + 1)
+        fl.rnn += 2 * (t + 1) * d + d * (t + 1) + d  # point pre-activations, signs, hidden map
         H = at[:, None] * P
         t += 1
         if t == n:
@@ -141,9 +144,24 @@ def exact_accuracy_lean(rnn, task):
     return 1.0 - e, fl
 
 
-def _tie_faces(cone, ties):
-    n = cone.V.shape[1]
+def _tie_faces(cone, ties, fl):
+    """The tie normals among `ties` of which the cone has a face (n - 1 rays on the plane)."""
+    m, n = cone.V.shape
+    fl.rnn += (2 * m * n + 3 * m + 1) * len(ties)  # V c, |.|, compare, count per tie
     return [c for c in ties if (np.abs(cone.V @ c) <= 1e-9).sum() >= n - 1]
+
+
+def _tie_point_lean(cone, faces, fl):
+    """engine._tie_point, charged: the centre, the face test of each tie tried and the point."""
+    m, n = cone.V.shape
+    fl.rnn += m * n
+    for c in faces:
+        on = (np.abs(cone.V @ c) <= 1e-9).sum()
+        fl.rnn += 2 * m * n + 3 * m + 1
+        if on >= n - 1:
+            fl.rnn += on * n + 3 * n + 1  # mean of the face rays plus a small step inside
+            break
+    return _tie_point(cone, faces)
 
 
 def finish_lean(rnn, cone, t, H, P, S, b, ties, fl, tau=0.1, big=0.01):
@@ -158,22 +176,21 @@ def finish_lean(rnn, cone, t, H, P, S, b, ties, fl, tau=0.1, big=0.01):
     if item[0] == "done":
         return region_incorrect_lean(rnn, cone, item[1], b, fl)
     _, t, H, P, S, i = item
-    fl.rnn += 2 * len(cone.V) * n * len(ties)  # which rays lie on which tie face
-    faces = _tie_faces(cone, ties)
+    faces = _tie_faces(cone, ties, fl)
     if len(faces) == 2:
+        fl.split += n  # the bisector's normal
         plus, minus = split(cone, faces[1] - faces[0], fl)  # plus: the half nearer faces[0]
         if plus is None or minus is None:
-            fl.rnn += 2 * len(cone.V) * n
-            e_tie = incorrect_lean(rnn, cone, resolve_lean(rnn, t, H, P, _tie_point(cone, faces[:1]), fl), b, fl)
+            pt = _tie_point_lean(cone, faces[:1], fl)
+            e_tie = incorrect_lean(rnn, cone, resolve_lean(rnn, t, H, P, pt, fl), b, fl)
         else:
             e_tie = 0.0
             for half, face in ((plus, faces[0]), (minus, faces[1])):
-                fl.rnn += 2 * len(half.V) * n * 2  # its face rays and the tie point
-                pt = _tie_point(half, [face])
+                pt = _tie_point_lean(half, [face], fl)
                 e_tie += incorrect_lean(rnn, half, resolve_lean(rnn, t, H, P, pt, fl), b, fl)
     else:
-        fl.rnn += 2 * len(cone.V) * n
-        e_tie = incorrect_lean(rnn, cone, resolve_lean(rnn, t, H, P, _tie_point(cone, faces), fl), b, fl)
+        pt = _tie_point_lean(cone, faces, fl)
+        e_tie = incorrect_lean(rnn, cone, resolve_lean(rnn, t, H, P, pt, fl), b, fl)
     if e_tie == 0.0:
         return e_tie
     mu = measure3(cone, fl)

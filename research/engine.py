@@ -151,6 +151,8 @@ def split(cone, c, fl=None, parts=False):
     s = V @ c
     P = np.where(s > TOL)[0]
     N = np.where(s < -TOL)[0]
+    if fl is not None:  # the test itself: normalise c, s = V c, sign masks (charged even if no split)
+        fl.split += 2 * m * n + 3 * n + 1 + 2 * m
     if len(P) == 0 or len(N) == 0:
         out = (None, cone) if len(P) == 0 else (cone, None)
         return out + (None,) if parts else out
@@ -166,8 +168,8 @@ def split(cone, c, fl=None, parts=False):
     p, q = P[adj[:, 0]], N[adj[:, 1]]
     W = s[p][:, None] * V[q] - s[q][:, None] * V[p]
     W /= np.linalg.norm(W, axis=1, keepdims=True)
-    if fl is not None:
-        fl.split += 2 * m * n + len(P) * len(N) * k + len(cand) * m * k + 6 * len(adj) * n
+    if fl is not None:  # Z mask, adjacency, new rays (and their norms), the minus child's facet -c
+        fl.split += m + len(P) * len(N) * k + len(cand) * m * k + (6 * n + 1) * len(adj) + n
         fl.counts["splits"] += 1
     out = []
     for side, sign in ((P, 1.0), (N, -1.0)):

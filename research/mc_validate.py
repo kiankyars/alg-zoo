@@ -5,7 +5,9 @@ with, so the exact rung's zero MSE holds by construction. This checks the engine
 sampling instead: for every noisy model in the given test files, 2^19 fresh Gaussian inputs (a
 different RNG from everything else), z = (exact - MC) / SE, and a chi-square test over models.
 
-Usage: python mc_validate.py results/test/M_32_3_0.01_lguard.jsonl ...   (writes results/mc_validation.json)
+Usage: python mc_validate.py results/test/M_32_3_0.01_lguard.jsonl ...
+Writes mc_validation.json next to the files (results/test -> results/mc_validation.json, as
+before; any other tag directory -> that directory), keyed by file name.
 """
 
 import json
@@ -38,9 +40,10 @@ def check(args):
 if __name__ == "__main__":
     import os
 
-    dest = "results/mc_validation.json"
-    out = json.load(open(dest)) if os.path.exists(dest) else {}
     for path in sys.argv[1:]:
+        folder = os.path.dirname(path)
+        dest = "results/mc_validation.json" if folder.rstrip("/") == "results/test" else os.path.join(folder, "mc_validation.json")
+        out = json.load(open(dest)) if os.path.exists(dest) else {}
         name = path.split("/")[-1]
         if name in out:
             continue
@@ -48,7 +51,7 @@ if __name__ == "__main__":
         sigma = float(name.split("_")[3])
         rows = [json.loads(l) for l in open(path)]
         jobs = [(f"M:{d},3", sigma, r["seed"], r["truth"]) for r in rows]
-        with Pool(9) as pool:
+        with Pool(int(os.environ.get("WORKERS", 9))) as pool:
             res = pool.map(check, jobs)
         z = np.array([r[3] for r in res])
         chi2 = float((z**2).sum())

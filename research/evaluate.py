@@ -16,6 +16,7 @@ import functools
 import json
 import math
 import os
+import subprocess
 import sys
 import time
 from multiprocessing import Pool
@@ -55,22 +56,29 @@ def noisy(rnn, sigma, seed, keyed=True):
 
 
 def run_one(args):
-    spec, sigma, seed, rule, keyed = args
+    spec, sigma, seed, rule, keyed = args[:5]
+    commit = args[5] if len(args) > 5 else None
     base, (task, _) = load(spec)
     rnn = noisy(base, sigma, seed, keyed)
     fwd = rnn.forward_flops()
     t0 = time.time()
     truth, fl = exact_accuracy(rnn, task)
-    if rule == "lean":  # lean.py: its own exact rung (same answer to ~1e-10, cheaper bookkeeping)
+    extra = {}
+    if rule == "lean":
+        # lean.py's exact rung: the same exact refinement with cheaper bookkeeping. Its value agrees
+        # with the truth to rounding (<= 3e-9), so it is scored as exact, at its own cost.
         acc, fl_lean = exact_accuracy_lean(rnn, task)
-        rungs = {"const": (1.0, 0.0), "exact": (acc, fl_lean.total / fwd)}
+        assert abs(acc - truth) < 1e-6, (spec, sigma, seed, acc, truth)
+        rungs = {"const": (1.0, 0.0), "exact": (truth, fl_lean.total / fwd)}
+        extra["lean_exact_dev"] = acc - truth
         ladder = anytime_ladder_lean(rnn, task, SPLIT_GRID, ROOT_GRID)
     else:
         rungs = {"const": (1.0, 0.0), "exact": (truth, fl.total / fwd)}
         ladder = anytime_ladder(rnn, task, SPLIT_GRID, ROOT_GRID, rule=rule)
     for name, (est, flops) in ladder.items():
         rungs[name] = (est, flops / fwd)
-    return {"seed": seed, "truth": truth, "rungs": rungs, "seconds": time.time() - t0}
+    return {"seed": seed, "truth": truth, "rungs": rungs, "seconds": time.time() - t0, "rule": rule,
+            "keyed": keyed, "commit": commit, **extra}
 
 
 def mc_check(spec, sigma, seed, keyed=True, N=2**22):
@@ -94,7 +102,15 @@ if __name__ == "__main__":
     path = path_for(spec, sigma, rule, tag)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     done = {json.loads(l)["seed"] for l in open(path)} if os.path.exists(path) else set()
-    todo = [(spec, sigma, s, rule, keyed) for s in range(first, first + K) if s not in done]
+    if done - set(range(first, first + K)):  # never pool different seed ranges in one file
+        sys.exit(f"{path} holds seeds outside {first}-{first + K - 1}; use another tag")
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    if os.environ.get("REQUIRE_CLEAN"):  # held-out runs: the code must be committed
+        dirty = subprocess.run(["git", "status", "--porcelain", "--", ".", ":(exclude)results"],
+                               capture_output=True, text=True).stdout
+        if dirty.strip():
+            sys.exit(f"uncommitted changes:\n{dirty}")
+    todo = [(spec, sigma, s, rule, keyed, commit) for s in range(first, first + K) if s not in done]
     with Pool(int(os.environ.get("WORKERS", 9))) as pool, open(path, "a") as fh:
         for r in pool.imap_unordered(run_one, todo):
             fh.write(json.dumps(r) + "\n")
