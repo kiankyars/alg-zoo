@@ -2,6 +2,7 @@
 
 import glob
 import json
+import math
 import os
 
 import numpy as np
@@ -121,13 +122,32 @@ def seeds_table():
     return "\n".join(out)
 
 
+def lean_table(path="results/test7000/analysis.json"):
+    """The pre-registered held-out test of the lean ladder (analyze_test.py output): worst fair
+    ratios of both ladders on the same noisy models, paired bootstrap intervals, Holm decisions."""
+    if not os.path.exists(path):
+        return "(pending)"
+    rows = json.load(open(path))
+    out = ["| model | σ | mean accuracy | lean | 90% CI | p | lguard | 90% CI | p | lean / lguard | 90% CI |",
+           "|---|---|---|---|---|---|---|---|---|---|---|"]
+    for r in rows:
+        _, d, n, sigma = r["cell"].split("_")
+        b = lambda x, h: f"**{x:.2f}**" if h else f"{x:.2f}"
+        out.append(f"| `M_{{{d},{n}}}` | {sigma} | {r['mean_acc']:.4f} | {b(r['lean'], r['holm_lean'])} | "
+                   f"[{r['lean_ci'][0]:.2f}, {r['lean_ci'][1]:.2f}] | {r['p_lean']:.4f} | "
+                   f"{b(r['lguard'], r['holm_lguard'])} | [{r['lguard_ci'][0]:.2f}, {r['lguard_ci'][1]:.2f}] | "
+                   f"{r['p_lguard']:.4f} | {math.exp(r['log_ratio']):.2f} | "
+                   f"[{math.exp(r['log_ratio_ci'][0]):.2f}, {math.exp(r['log_ratio_ci'][1]):.2f}] |")
+    return "\n".join(out)
+
+
 def fill_readme(path="README.md"):
     """Replace the content between <!-- KEY --> and <!-- /KEY --> markers with fresh tables."""
     import re
 
     text = open(path).read()
     for key, fn in [("SWEEP_TABLE", sweep_table), ("DEV_TABLE", dev_table), ("EXACT_TABLE", exact_table),
-                    ("SLIVER_TABLE", sliver_table), ("SEEDS_TABLE", seeds_table)]:
+                    ("SLIVER_TABLE", sliver_table), ("SEEDS_TABLE", seeds_table), ("LEAN_TABLE", lean_table)]:
         text = re.sub(rf"<!-- {key} -->.*?<!-- /{key} -->", lambda _: f"<!-- {key} -->\n{fn()}\n<!-- /{key} -->",
                       text, flags=re.S)
     open(path, "w").write(text)
