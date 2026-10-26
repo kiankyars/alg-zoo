@@ -8,6 +8,7 @@ has MSE  mean_k p_k (1 - p_k) / B  (p_k = accuracy of noisy model k). Compute is
 forward-pass equivalents: estimator flops / RNN.forward_flops().
 
 Usage: python evaluate.py <family:d,n> <sigma> <first_seed> <n_models> <rule> [tag]
+(rule: an engine._finish rule such as lguard, or "lean" for the ladder of lean.py)
 Writes results/<tag>/<spec>_<sigma>_<rule>.jsonl (one line per noisy model; resumable).
 """
 
@@ -25,6 +26,7 @@ from alg_zoo import zoo_2nd_argmax, zoo_argmedian
 from alg_zoo.tasks import task_2nd_argmax, task_argmedian
 
 from engine import RNN, anytime_ladder, exact_accuracy
+from lean import anytime_ladder_lean, exact_accuracy_lean
 
 TASKS = {"M": ("2nd_argmax", task_2nd_argmax), "AM": ("argmedian", task_argmedian)}
 SPLIT_GRID = [0, 1, 2, 3, 4, 6, 8, 11, 16, 23, 32, 45, 64, 90, 128, 181, 256, 362, 512, 724,
@@ -59,8 +61,14 @@ def run_one(args):
     fwd = rnn.forward_flops()
     t0 = time.time()
     truth, fl = exact_accuracy(rnn, task)
-    rungs = {"const": (1.0, 0.0), "exact": (truth, fl.total / fwd)}
-    for name, (est, flops) in anytime_ladder(rnn, task, SPLIT_GRID, ROOT_GRID, rule=rule).items():
+    if rule == "lean":  # lean.py: its own exact rung (same answer to ~1e-10, cheaper bookkeeping)
+        acc, fl_lean = exact_accuracy_lean(rnn, task)
+        rungs = {"const": (1.0, 0.0), "exact": (acc, fl_lean.total / fwd)}
+        ladder = anytime_ladder_lean(rnn, task, SPLIT_GRID, ROOT_GRID)
+    else:
+        rungs = {"const": (1.0, 0.0), "exact": (truth, fl.total / fwd)}
+        ladder = anytime_ladder(rnn, task, SPLIT_GRID, ROOT_GRID, rule=rule)
+    for name, (est, flops) in ladder.items():
         rungs[name] = (est, flops / fwd)
     return {"seed": seed, "truth": truth, "rungs": rungs, "seconds": time.time() - t0}
 
@@ -87,7 +95,7 @@ if __name__ == "__main__":
     os.makedirs(os.path.dirname(path), exist_ok=True)
     done = {json.loads(l)["seed"] for l in open(path)} if os.path.exists(path) else set()
     todo = [(spec, sigma, s, rule, keyed) for s in range(first, first + K) if s not in done]
-    with Pool(9) as pool, open(path, "a") as fh:
+    with Pool(int(os.environ.get("WORKERS", 9))) as pool, open(path, "a") as fh:
         for r in pool.imap_unordered(run_one, todo):
             fh.write(json.dumps(r) + "\n")
             fh.flush()
