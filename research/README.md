@@ -636,10 +636,17 @@ measures of the reference, not an excess of the law.
 
 * **`M_{16,10}` is still open.** The exact engine refines every linear region, and their number
   grows exponentially with sequence length. Sampling 200k inputs of `M_{16,10}` gives 138k
-  distinct activation-pattern sequences, so exact refinement is hopeless there. Its error is
-  also not tie-sliver dominated: about a fifth comes from inputs with at most one positive
-  value, and a substantial part from large gaps. A cheaper understanding of the dense neurons
-  is still needed.
+  distinct activation-pattern sequences, so exact refinement is hopeless there. Its errors are
+  still tie slivers, but not thin ones. A Monte Carlo estimate of the exact sliver law (true
+  widths along 2¹⁶ normal lines per tie hyperplane, `sliver_mc.py widths`) accounts for 96.8% ±
+  0.4% of its error rate of 0.0468, while the first-order law is off by +170% uncapped, −14%
+  with the order cap and −22% with the bisector cap. 18% of the error comes from the 1.1% of
+  inputs with at most one positive value, 78% of which are wrong: the model's only neuron with
+  a large positive input weight (+10.2; the next is +0.3) detects new positive running maxima,
+  so nothing ranks negative values. What is missing is a mechanistic way to get the widths of
+  these slivers without walking each normal line, i.e. a cheap model of how the hidden state
+  bends the logit gap across a sliver. (An earlier version of this bullet said the error was
+  not tie-sliver dominated; that holds only for the first-order law.)
 * **Intermediate budgets for `n >= 4`.** Exact computation of 4- and 5-input models costs
   10⁵–10⁹ forward-pass equivalents. Above that budget it beats sampling by many orders of
   magnitude. Below it our approximate rungs were not competitive: in exploratory runs on
