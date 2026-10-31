@@ -62,4 +62,13 @@ measures (Plackett's formula and degree-7 cubature). Exact refinement itself cos
 
 ## Expectations stated in advance (from the development seeds)
 
-DEV_EXPECTATIONS
+From `analyze_test4.py results/kdev4` (16 models per cell, 2,000 bootstrap replicates):
+
+* Primary: H0 rejected in all 6 cells. The worst ratio over B >= b0 is 0.017 / 0.040 / 0.074 for
+  `M_{8,4}` and 0.014 / 0.032 / 0.062 for `M_{16,4}` (sigma 0.002 / 0.005 / 0.01), with 90% intervals
+  below 0.09; a cell would fail only if the near-exact rungs' errors grew about 4-8 times in RMS.
+* The worst ratio over all budgets stays far above 1 for both ladders (32-177 for cheap4, 755-3,850
+  for lguard), so this does not solve the 4-input problem at intermediate budgets; cheap4's is about
+  20 times smaller (paired ratio 0.040-0.053).
+* Crossover B*: 4.3-5.3 x 10⁴ forward passes for `M_{8,4}` and 1.16-1.21 x 10⁵ for `M_{16,4}`; for
+  lguard it is the exact cost (1.06-1.28 x 10⁶).
