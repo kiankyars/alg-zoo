@@ -363,9 +363,21 @@ def measure_simplices(S, n, fl, measure="slice", s=3, n_quad=20, max_angle=0.3, 
         wide cones it measures below `tiny` are recomputed by slice cubature after bisection.
       With the defaults the result is converged to ~1e-11 on the zoo models (raising s, lowering
       max_angle or tiny changes nothing at that level).
-    measure="orthant": Plackett throughout (an independent check)."""
+    measure="orthant": Plackett throughout (an independent check).
+    measure="cheap:<s>:<max_angle>" (n >= 4): slice cubature of degree 2s+1 for every cone, after
+      bisecting cones wider than max_angle; a cheap rule with a small deterministic bias (e.g.
+      cheap:1:1.0 is within 0.4% of the exact measure on the 4-input zoo models' error regions),
+      charged for its pieces and for the bisection (an angle matrix per intermediate cone)."""
     out = np.zeros(len(S))
     if len(S) == 0:
+        return out
+    if n >= 4 and measure.startswith("cheap"):
+        _, cs, ca = measure.split(":")
+        for k in range(0, len(S), 8192):
+            chunk = S[k : k + 8192]
+            v, pieces = slice_measure(chunk, s=int(cs), max_angle=float(ca), return_pieces=True)
+            out[k : k + 8192] = v
+            fl.measure += slice_flops(n, int(cs)) * pieces + (pieces - len(chunk)) * n * n * (2 * n + 20)
         return out
     use_slice = np.zeros(len(S), bool)
     if n >= 4 and measure == "slice":

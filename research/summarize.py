@@ -24,6 +24,8 @@ def order_key(name):
         return (0, 0)
     if name == "exact":
         return (3, 0)
+    if name == "exact_cheap":  # exact refinement with a cheap measure (evaluate.py rule cheap4)
+        return (2, 10**9)
     m = re.match(r"(roots|any)(\d+)", name)
     return (1 if m.group(1) == "roots" else 2, int(m.group(2)))
 
@@ -46,6 +48,9 @@ def worst_ratios(names, truth, est, cost, idx=None):
     c = cost.mean(0)
     ex = names.index("exact")
     keep = [i for i in range(len(names)) if i == ex or c[i] < c[ex]]
+    if "exact_cheap" in names:  # likewise drop rungs that cost more than the near-exact rung
+        ec = names.index("exact_cheap")
+        keep = [i for i in keep if i in (ex, ec) or c[i] < c[ec]]
     rungs = sorted(keep, key=lambda i: order_key(names[i]))
     # fair: ladder order; the rung in use at B is the last one with cost <= B
     fair, fair_at = 0.0, None
@@ -66,6 +71,30 @@ def worst_ratios(names, truth, est, cost, idx=None):
             continue
         oracle = max(oracle, best * hi / var)
     return fair, oracle, fair_at, var, c[ex]
+
+
+def crossover(names, truth, est, cost, idx=None):
+    """The smallest budget B* such that, under the fair rule, the ladder has lower MSE than
+    sampling at every budget B >= B* (1 if it wins everywhere). Within a rung's budget interval
+    the ratio mse * B / var increases, so the ladder loses on the end of the interval from
+    B = var / mse on; B* is the end of the last interval where that happens."""
+    if idx is not None:
+        truth, est, cost = truth[idx], est[idx], cost[idx]
+    var = float((truth * (1 - truth)).mean())
+    mse = ((est - truth[:, None]) ** 2).mean(0)
+    c = cost.mean(0)
+    ex = names.index("exact")
+    keep = [i for i in range(len(names)) if i == ex or c[i] < c[ex]]
+    if "exact_cheap" in names:
+        ec = names.index("exact_cheap")
+        keep = [i for i in keep if i in (ex, ec) or c[i] < c[ec]]
+    rungs = sorted(keep, key=lambda i: order_key(names[i]))
+    b_star = 1.0
+    for a, b in zip(rungs, rungs[1:] + [None]):
+        hi = c[b] if b is not None else np.inf
+        if mse[a] > 0 and var / mse[a] < hi:
+            b_star = max(b_star, float(hi))
+    return b_star
 
 
 def bootstrap(names, truth, est, cost, n=2000, seed=0):

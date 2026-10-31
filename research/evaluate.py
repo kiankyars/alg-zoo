@@ -8,7 +8,8 @@ has MSE  mean_k p_k (1 - p_k) / B  (p_k = accuracy of noisy model k). Compute is
 forward-pass equivalents: estimator flops / RNN.forward_flops().
 
 Usage: python evaluate.py <family:d,n> <sigma> <first_seed> <n_models> <rule> [tag]
-(rule: an engine._finish rule such as lguard, or "lean" for the ladder of lean.py)
+(rule: an engine._finish rule such as lguard, "lean" for the ladder of lean.py, or "cheap4" for
+4- and 5-input models: lguard with the cheap measure CHEAP and a near-exact rung exact_cheap)
 Writes results/<tag>/<spec>_<sigma>_<rule>.jsonl (one line per noisy model; resumable).
 """
 
@@ -33,6 +34,7 @@ TASKS = {"M": ("2nd_argmax", task_2nd_argmax), "AM": ("argmedian", task_argmedia
 SPLIT_GRID = [0, 1, 2, 3, 4, 6, 8, 11, 16, 23, 32, 45, 64, 90, 128, 181, 256, 362, 512, 724,
               1024, 1448, 2048, 2896, 4096, 5793, 8192, 11585, 16384]
 ROOT_GRID = [1, 2, 3, 4, 6, 8, 11, 16, 23, 32, 45, 64, 90, 128, 181]
+CHEAP = "cheap:1:1.0"  # rule cheap4: degree-3 slice cubature, cones bisected to <= 1 rad (engine.measure_simplices)
 
 
 @functools.lru_cache(maxsize=None)
@@ -72,6 +74,11 @@ def run_one(args):
         rungs = {"const": (1.0, 0.0), "exact": (truth, fl_lean.total / fwd)}
         extra["lean_exact_dev"] = acc - truth
         ladder = anytime_ladder_lean(rnn, task, SPLIT_GRID, ROOT_GRID)
+    elif rule == "cheap4":  # n >= 4: the lguard ladder with a cheap measure, and a near-exact rung
+        rungs = {"const": (1.0, 0.0), "exact": (truth, fl.total / fwd)}
+        acc, fl_cheap = exact_accuracy(rnn, task, measure=CHEAP)  # exact refinement, cheap measure
+        rungs["exact_cheap"] = (acc, fl_cheap.total / fwd)
+        ladder = anytime_ladder(rnn, task, SPLIT_GRID, ROOT_GRID, rule="lguard", measure=CHEAP)
     else:
         rungs = {"const": (1.0, 0.0), "exact": (truth, fl.total / fwd)}
         ladder = anytime_ladder(rnn, task, SPLIT_GRID, ROOT_GRID, rule=rule)
