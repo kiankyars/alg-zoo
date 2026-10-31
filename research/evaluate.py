@@ -116,8 +116,8 @@ if __name__ == "__main__":
     if done - set(range(first, first + K)):  # never pool different seed ranges in one file
         sys.exit(f"{path} holds seeds outside {first}-{first + K - 1}; use another tag")
     commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-    if os.environ.get("REQUIRE_CLEAN"):  # held-out runs: the code must be committed
-        dirty = subprocess.run(["git", "status", "--porcelain", "--", ".", ":(exclude)results"],
+    if os.environ.get("REQUIRE_CLEAN"):  # held-out runs: the code (the whole repo but results/) must be committed
+        dirty = subprocess.run(["git", "status", "--porcelain", "--", "..", ":(exclude)results"],
                                capture_output=True, text=True).stdout
         if dirty.strip():
             sys.exit(f"uncommitted changes:\n{dirty}")

@@ -25,7 +25,7 @@ import numpy as np
 from analyze_test import holm
 from summarize import crossover, load, worst_from, worst_ratios
 
-B0 = {"M_8_4": 8.5e4, "M_16_4": 1.8e5}  # forward passes; 1.5 x the dev cost of exact_cheap
+B0 = {"M_8_4": 6.3e4, "M_16_4": 1.35e5}  # forward passes; 1.1 x the dev cost of exact_cheap
 
 
 def main(d, n_boot=10000):
