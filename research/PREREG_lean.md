@@ -70,3 +70,20 @@ at 0.002 and 0.005). Uncertain: `M_{8,3}` and `M_{16,3}` at 0.01, `M_{32,3}` at 
 `M_{4,3}` at 0.005 and 0.01, and `M_{3,3}` at every noise level. For any ladder whose first rung is
 the prior "accuracy 1", the worst ratio is at least MSE(const) x cost(first rung) / var, which is
 above 1 for those models.
+
+## Addendum (written after the test; the text above is unchanged)
+
+A fact-check of the write-up found three inaccuracies in this pre-registration. None affects the
+test, which used only seeds 7000-7199:
+
+* The list of development seeds is incomplete. A pre-freeze review also used 5800-5839 and
+  5916-5939 (`M_{3,3}` at sigma = 0.005, a check of the result tags).
+* "The cells it failed" omits `M_{3,3}`, which also failed the first test at every noise level;
+  the design targeted the other failures and left `M_{3,3}` out.
+* The refusal to run on uncommitted code is in `evaluate.py` (`REQUIRE_CLEAN`, set by
+  `run_test_lean.sh`), once per cell; the script itself would carry on to the validation and
+  the analysis. The tree was clean throughout: rows were stamped with commits 270fe34, 38b05ed
+  and 701ee13, between which only `README.md`, `make_tables.py` and result files changed.
+
+The expectations above put the const-prior floor above 1 for all five cells "not expected" to
+pass; on the test it is above 1 for four of them, and 0.78 for `M_{4,3}` at sigma = 0.005.

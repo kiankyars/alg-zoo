@@ -1,7 +1,7 @@
 """A second finishing rule and ladder for 3-input models ("lean"), designed after the held-out test
-of the lguard ladder, on the cells that failed it, using development noise seeds only (5000-5131,
-5200-5223, 5600-5799, 5900-5915, 5960-6007); see README, "A second ladder for 3-input models",
-and PREREG_lean.md for its held-out test. It changes three things relative to
+of the lguard ladder, on the cells that failed it other than M_{3,3}, using development noise
+seeds only (5000-5131, 5200-5223, 5600-5839, 5900-5939, 5960-6007); see README, section 1b, and
+PREREG_lean.md for its held-out test. It changes three things relative to
 engine.anytime_ladder with rule="lguard":
 
 * Exact finishing of implausible last-step conflicts. A cone whose first conflict is at the last
@@ -28,8 +28,9 @@ and three pieces of bookkeeping that give the same estimates with fewer charged 
   on the root, so the first activation pattern is known without evaluating rays.
 
 The exact rung is exact refinement with the same bookkeeping (exact_accuracy_lean). It agrees with
-engine.exact_accuracy to about 1e-10, and to 3e-9 on M_{3,3}, where Girard's formula is the more
-accurate of the two (the engine's arcsine closed form loses ~1e-9 on very thin simplices).
+engine.exact_accuracy to below 1e-9 (up to 7.5e-10 on M_{32,3}), and to 3e-9 on M_{3,3}, where
+Girard's formula is the more accurate of the two (the engine's arcsine closed form loses ~1e-9 on
+very thin simplices).
 """
 
 import heapq
