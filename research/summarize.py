@@ -19,13 +19,16 @@ import sys
 import numpy as np
 
 
+NEAR = ["exact_cheap", "exact_fine"]  # near-exact rungs, after the any_k rungs, cheapest first
+
+
 def order_key(name):
     if name == "const":
         return (0, 0)
     if name == "exact":
         return (3, 0)
-    if name == "exact_cheap":  # exact refinement with a cheap measure (evaluate.py rule cheap4)
-        return (2, 10**9)
+    if name in NEAR:  # exact refinement with a cheap measure (evaluate.py rule cheap4)
+        return (2, 10**9 + NEAR.index(name))
     m = re.match(r"(roots|any)(\d+)", name)
     return (1 if m.group(1) == "roots" else 2, int(m.group(2)))
 
@@ -40,6 +43,16 @@ def load(path):
     return names, truth, est, cost
 
 
+def _drop_dominated(names, c, keep):
+    """Drop rungs that come before a near-exact rung in ladder order but cost at least as much:
+    the fair rule never uses them (only applied when near-exact rungs are present)."""
+    for k in NEAR:
+        if k in names:
+            j = names.index(k)
+            keep = [i for i in keep if order_key(names[i]) >= order_key(k) or c[i] < c[j]]
+    return keep
+
+
 def worst_ratios(names, truth, est, cost, idx=None):
     if idx is not None:
         truth, est, cost = truth[idx], est[idx], cost[idx]
@@ -48,9 +61,7 @@ def worst_ratios(names, truth, est, cost, idx=None):
     c = cost.mean(0)
     ex = names.index("exact")
     keep = [i for i in range(len(names)) if i == ex or c[i] < c[ex]]
-    if "exact_cheap" in names:  # likewise drop rungs that cost more than the near-exact rung
-        ec = names.index("exact_cheap")
-        keep = [i for i in keep if i in (ex, ec) or c[i] < c[ec]]
+    keep = _drop_dominated(names, c, keep)
     rungs = sorted(keep, key=lambda i: order_key(names[i]))
     # fair: ladder order; the rung in use at B is the last one with cost <= B
     fair, fair_at = 0.0, None
@@ -85,9 +96,7 @@ def crossover(names, truth, est, cost, idx=None):
     c = cost.mean(0)
     ex = names.index("exact")
     keep = [i for i in range(len(names)) if i == ex or c[i] < c[ex]]
-    if "exact_cheap" in names:
-        ec = names.index("exact_cheap")
-        keep = [i for i in keep if i in (ex, ec) or c[i] < c[ec]]
+    keep = _drop_dominated(names, c, keep)
     rungs = sorted(keep, key=lambda i: order_key(names[i]))
     b_star = 1.0
     for a, b in zip(rungs, rungs[1:] + [None]):
@@ -95,6 +104,25 @@ def crossover(names, truth, est, cost, idx=None):
         if mse[a] > 0 and var / mse[a] < hi:
             b_star = max(b_star, float(hi))
     return b_star
+
+
+def worst_from(names, truth, est, cost, b0, idx=None):
+    """The worst fair ratio over budgets B >= b0 only: the rung in use on [c_a, c_next) counts if
+    that interval reaches beyond b0, at its supremum c_next."""
+    if idx is not None:
+        truth, est, cost = truth[idx], est[idx], cost[idx]
+    var = float((truth * (1 - truth)).mean())
+    mse = ((est - truth[:, None]) ** 2).mean(0)
+    c = cost.mean(0)
+    ex = names.index("exact")
+    keep = _drop_dominated(names, c, [i for i in range(len(names)) if i == ex or c[i] < c[ex]])
+    rungs = sorted(keep, key=lambda i: order_key(names[i]))
+    worst = 0.0
+    for a, b in zip(rungs, rungs[1:] + [None]):
+        hi = c[b] if b is not None else np.inf
+        if hi > b0 and mse[a] > 0:
+            worst = max(worst, mse[a] * hi / var if np.isfinite(hi) else np.inf)
+    return worst
 
 
 def bootstrap(names, truth, est, cost, n=2000, seed=0):

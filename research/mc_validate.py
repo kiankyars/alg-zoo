@@ -47,10 +47,10 @@ if __name__ == "__main__":
         name = path.split("/")[-1]
         if name in out:
             continue
-        d = int(name.split("_")[1])
+        d, n = int(name.split("_")[1]), int(name.split("_")[2])
         sigma = float(name.split("_")[3])
         rows = [json.loads(l) for l in open(path)]
-        jobs = [(f"M:{d},3", sigma, r["seed"], r["truth"]) for r in rows]
+        jobs = [(f"M:{d},{n}", sigma, r["seed"], r["truth"]) for r in rows]
         with Pool(int(os.environ.get("WORKERS", 9))) as pool:
             res = pool.map(check, jobs)
         z = np.array([r[3] for r in res])

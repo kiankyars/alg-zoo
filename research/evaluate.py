@@ -9,7 +9,8 @@ forward-pass equivalents: estimator flops / RNN.forward_flops().
 
 Usage: python evaluate.py <family:d,n> <sigma> <first_seed> <n_models> <rule> [tag]
 (rule: an engine._finish rule such as lguard, "lean" for the ladder of lean.py, or "cheap4" for
-4- and 5-input models: lguard with the cheap measure CHEAP and a near-exact rung exact_cheap)
+4- and 5-input models: lguard with the cheap measure CHEAP, and near-exact rungs exact_cheap
+(CHEAP) and exact_fine (FINE): exact refinement with cheap measures)
 Writes results/<tag>/<spec>_<sigma>_<rule>.jsonl (one line per noisy model; resumable).
 """
 
@@ -35,6 +36,7 @@ SPLIT_GRID = [0, 1, 2, 3, 4, 6, 8, 11, 16, 23, 32, 45, 64, 90, 128, 181, 256, 36
               1024, 1448, 2048, 2896, 4096, 5793, 8192, 11585, 16384]
 ROOT_GRID = [1, 2, 3, 4, 6, 8, 11, 16, 23, 32, 45, 64, 90, 128, 181]
 CHEAP = "cheap:1:1.0"  # rule cheap4: degree-3 slice cubature, cones bisected to <= 1 rad (engine.measure_simplices)
+FINE = "cheap:2:1.0"  # rule cheap4's second near-exact rung: degree-5 slice cubature
 
 
 @functools.lru_cache(maxsize=None)
@@ -78,6 +80,8 @@ def run_one(args):
         rungs = {"const": (1.0, 0.0), "exact": (truth, fl.total / fwd)}
         acc, fl_cheap = exact_accuracy(rnn, task, measure=CHEAP)  # exact refinement, cheap measure
         rungs["exact_cheap"] = (acc, fl_cheap.total / fwd)
+        acc, fl_fine = exact_accuracy(rnn, task, measure=FINE)
+        rungs["exact_fine"] = (acc, fl_fine.total / fwd)
         ladder = anytime_ladder(rnn, task, SPLIT_GRID, ROOT_GRID, rule="lguard", measure=CHEAP)
     else:
         rungs = {"const": (1.0, 0.0), "exact": (truth, fl.total / fwd)}
