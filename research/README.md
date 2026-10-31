@@ -66,6 +66,17 @@ the 432-parameter `M_{16,10}` (`example_2nd_argmax()`, a different checkpoint fr
    cone: with 6.7 × 10⁷ fresh samples, the χ² tests over their 240 root cones give p =
    0.07–0.92. Matching even 10⁻⁹ precision by sampling would take 10¹³–10¹⁷ samples, depending
    on the model's accuracy.
+
+   **For 4-input models, exact refinement with a cheap Gaussian measure beats sampling from about
+   5–11% of the exact cost.** The exact computation's cost is mostly the measures (Plackett's
+   formula, degree-7 cubature), computed to about 10⁻¹¹. Measured instead with degree-3 and
+   degree-5 slice cubatures, the same exact refinement is within 0.4% and 0.03% of the error. In
+   a pre-registered held-out test (100 fresh noisy models per cell, `M_{8,4}` and `M_{16,4}` at
+   three noise levels; section [1c](#1c-4-input-models-a-cheap-measure-for-exact-refinement-pre-registered-held-out-test)),
+   this ladder has lower MSE than sampling at every budget from 6.3 × 10⁴ (`M_{8,4}`) and
+   1.35 × 10⁵ (`M_{16,4}`) forward passes on, in all 6 cells. Its crossover is 4.3 × 10⁴ and
+   1.2 × 10⁵ forward passes, against the exact cost of 1.1–1.3 × 10⁶ before. Below that, both it
+   and the first ladder still lose to sampling by far (worst ratios 32–180 and 555–4,729).
 3. **A mechanistic account of where the trained models' errors are: the exact tie-sliver
    law.** The errors of well-trained models are thin wedges ("slivers") along the tie
    hyperplanes at which the target switches between two inputs. Inside an **order chamber**
@@ -105,7 +116,8 @@ the 432-parameter `M_{16,10}` (`example_2nd_argmax()`, a different checkpoint fr
    off by up to +49%.
 
 What is **not** solved: ARC's headline challenge `M_{16,10}`; matching sampling at intermediate
-budgets for 4- and 5-input models, where exact computation costs 10⁵–10⁹ forward passes (the
+budgets for 4- and 5-input models, below about 5–11% of the exact cost of 10⁵–10⁹ forward passes
+for 4-input models (section 1c) and below the exact cost for 5-input models (the
 sliver laws do not help there: they describe trained models, the order-truncated law is off by
 +8% to +50% on 9 noisy 4-input models, and the exact sliver law costs 0.3–24 times as much as
 exact computation for 4-input models and far more for 5-input models); and, among the 3-input
@@ -245,6 +257,45 @@ rungs). With "accuracy 1" as rung 0, the worst ratio is at least MSE(const) × c
 `M_{4,3}` at σ = 0.01. It is below 1 for the two other failures, `M_{4,3}` at σ = 0.005 (floor
 0.78, measured 1.38; the pre-registration had put it above 1) and `M_{16,3}` at σ = 0.01 (floor
 0.39, measured 1.16), so those need better rungs, not just cheaper ones.
+
+### 1c. 4-input models: a cheap measure for exact refinement (pre-registered held-out test)
+
+Exact computation of a 4-input model costs about 10⁶ forward-pass equivalents, but exact
+refinement into linear regions is only 2–20% of that; the rest is Gaussian measures, computed to
+about 10⁻¹¹. The `cheap4` rule (`evaluate.py`) is the first ladder with every cone measured by a
+degree-3 slice cubature after bisecting cones to at most 1 radian
+(`engine.measure_simplices(measure="cheap:1:1.0")`). Before the exact rung it adds two near-exact
+rungs: exact refinement measured with that rule (`exact_cheap`) and with a degree-5 rule
+(`exact_fine`). On the test models they understate the error rate by 0.05–0.38% and overstate it
+by 0.003–0.024%, respectively. The rule was designed on development seeds (5000–5015, 5400–5415), reviewed, frozen
+and pre-registered (`PREREG_cheap4.md`). The review moved the threshold b0 below off a rung's
+cost and made the stated hypothesis say what it covers. It was then tested once on 100 fresh
+noisy models per cell (noise seeds 8000–8099), with the first ladder on the same models; the
+truth passed its Monte Carlo check in every cell (χ² p 0.02–0.91, max |z| 3.5).
+
+The primary hypothesis is deliberately narrow. From a budget b0 fixed in advance (6.3 × 10⁴
+forward passes for `M_{8,4}`, 1.35 × 10⁵ for `M_{16,4}`, about 5% and 11% of the exact cost), the
+fair rule uses only the near-exact rungs, so the test checks that their bias stays below
+sampling's noise on held-out models. It does, in all 6 cells after a Holm correction (**bold**):
+the worst ratio from b0 on is 0.014–0.074. Over all budgets both ladders still lose to sampling
+by far, so intermediate budgets for 4-input models remain unsolved. What the cheap measure changes
+is where mechanistic estimation starts to win, the crossover budget B*: 4.3 × 10⁴ forward passes
+for `M_{8,4}` and 1.2 × 10⁵ for `M_{16,4}`, against the exact cost (1.1–1.3 × 10⁶) for the first
+ladder. It also lowers the worst ratio over all budgets about 20-fold (paired ratio 0.038–0.058,
+Holm-significant in every cell). The bottleneck below B* is the anytime rungs' linearisation,
+which the cheap measure does not change: on these noisy models the median error of their
+estimates is 26–51% with no splits, 24–35% after 128 splits and 11–21% after 1,024.
+
+<!-- CHEAP4_TABLE -->
+| model | σ | mean accuracy | exact cost | b0 | worst ratio for B ≥ b0 | 90% CI | cheap4, all budgets | lguard, all budgets | crossover B*, cheap4 | 90% CI | crossover B*, lguard |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `M_{8,4}` | 0.002 | 0.9801 | 1.22e+06 | 6.30e+04 | **0.017** | [0.016, 0.017] | 32 [31, 34] | 555 [488, 631] | 4.27e+04 | [4.25e+04, 4.28e+04] | 1.22e+06 |
+| `M_{8,4}` | 0.005 | 0.9601 | 1.27e+06 | 6.30e+04 | **0.039** | [0.037, 0.041] | 84 [77, 90] | 1969 [1724, 2227] | 4.31e+04 | [4.28e+04, 4.33e+04] | 1.27e+06 |
+| `M_{8,4}` | 0.01 | 0.9206 | 1.29e+06 | 6.30e+04 | **0.074** | [0.069, 0.078] | 180 [166, 199] | 4729 [4092, 5399] | 4.32e+04 | [4.30e+04, 5.41e+04] | 1.29e+06 |
+| `M_{16,4}` | 0.002 | 0.9877 | 1.09e+06 | 1.35e+05 | **0.014** | [0.013, 0.015] | 60 [44, 91] | 1590 [1141, 2395] | 1.18e+05 | [1.17e+05, 1.19e+05] | 1.09e+06 |
+| `M_{16,4}` | 0.005 | 0.9682 | 1.18e+06 | 1.35e+05 | **0.034** | [0.032, 0.036] | 46 [35, 60] | 1177 [920, 1586] | 1.18e+05 | [1.17e+05, 1.19e+05] | 1.18e+06 |
+| `M_{16,4}` | 0.01 | 0.9302 | 1.21e+06 | 1.35e+05 | **0.062** | [0.059, 0.066] | 52 [49, 60] | 1263 [991, 1585] | 1.16e+05 | [1.15e+05, 1.17e+05] | 1.21e+06 |
+<!-- /CHEAP4_TABLE -->
 
 ### 2. Exact accuracies of ≤ 5-input models
 
@@ -761,10 +812,12 @@ measures of the reference, not an excess of the law.
   bends the logit gap across a sliver. (An earlier version of this bullet said the error was
   not tie-sliver dominated; that holds only for the first-order law.)
 * **Intermediate budgets for `n >= 4`.** Exact computation of 4- and 5-input models costs
-  10⁵–10⁹ forward-pass equivalents. Above that budget it beats sampling by many orders of
-  magnitude. Below it our approximate rungs were not competitive: in exploratory runs on
-  `M_{16,4}`, not included in `results/`, they were 10–500× worse than sampling in MSE. In 4-D
-  the unresolved cones are large, and linearising them is unreliable.
+  10⁵–10⁹ forward-pass equivalents. For 4-input models, exact refinement with a cheap measure
+  beats sampling from about 5–11% of that cost (section 1c, `M_{8,4}` and `M_{16,4}`; `M_{32,4}`,
+  where refinement is about 20% of the exact cost, was not tested). Below that our approximate
+  rungs are not competitive: on the held-out models they are 32–180 times worse than sampling at
+  their worst (555–4,729 with the reference measure). In 4-D the unresolved cones are large, and
+  linearising them at one activation pattern is unreliable. 5-input models were not tested.
 * **Small 3-input models and the heaviest noise.** The second ladder (section 1b) still loses
   to sampling over a window of budgets for `M_{3,3}` at every noise level and for `M_{4,3}` at
   σ = 0.005 and 0.01 (their 90% intervals lie wholly above 1). For `M_{16,3}` at σ = 0.01 it is

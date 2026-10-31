@@ -142,13 +142,33 @@ def lean_table(path="results/test7000/analysis.json"):
     return "\n".join(out)
 
 
+def cheap4_table(path="results/test8000/analysis.json"):
+    """The pre-registered held-out test of the cheap4 ladder for 4-input models (analyze_test4.py)."""
+    if not os.path.exists(path):
+        return "(pending)"
+    rows = json.load(open(path))
+    out = ["| model | σ | mean accuracy | exact cost | b0 | worst ratio for B ≥ b0 | 90% CI | cheap4, all budgets | "
+           "lguard, all budgets | crossover B*, cheap4 | 90% CI | crossover B*, lguard |",
+           "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for r in rows:
+        _, d, n, sigma = r["cell"].split("_")
+        w = f"**{r['from_b0']:.3f}**" if r["holm_from_b0"] else f"{r['from_b0']:.3f}"
+        out.append(f"| `M_{{{d},{n}}}` | {sigma} | {r['mean_acc']:.4f} | {r['exact_cost']:.2e} | {r['b0']:.2e} | {w} | "
+                   f"[{r['from_b0_ci'][0]:.3f}, {r['from_b0_ci'][1]:.3f}] | {r['cheap4']:.0f} "
+                   f"[{r['cheap4_ci'][0]:.0f}, {r['cheap4_ci'][1]:.0f}] | {r['lguard']:.0f} "
+                   f"[{r['lguard_ci'][0]:.0f}, {r['lguard_ci'][1]:.0f}] | {r['crossover_cheap4']:.2e} | "
+                   f"[{r['crossover_cheap4_ci'][0]:.2e}, {r['crossover_cheap4_ci'][1]:.2e}] | {r['crossover_lguard']:.2e} |")
+    return "\n".join(out)
+
+
 def fill_readme(path="README.md"):
     """Replace the content between <!-- KEY --> and <!-- /KEY --> markers with fresh tables."""
     import re
 
     text = open(path).read()
     for key, fn in [("SWEEP_TABLE", sweep_table), ("DEV_TABLE", dev_table), ("EXACT_TABLE", exact_table),
-                    ("SLIVER_TABLE", sliver_table), ("SEEDS_TABLE", seeds_table), ("LEAN_TABLE", lean_table)]:
+                    ("SLIVER_TABLE", sliver_table), ("SEEDS_TABLE", seeds_table), ("LEAN_TABLE", lean_table),
+                    ("CHEAP4_TABLE", cheap4_table)]:
         text = re.sub(rf"<!-- {key} -->.*?<!-- /{key} -->", lambda _: f"<!-- {key} -->\n{fn()}\n<!-- /{key} -->",
                       text, flags=re.S)
     open(path, "w").write(text)
